@@ -1,0 +1,270 @@
+## What is RDD
+Stands for Resilient Distributed dataset. Consider it as an Object which you have created in
+your driver program, but when you perform operation in it, the operation actually happens in
+the Worker Node.
+
+In any spark program, you will typically do below operations :
+1. Creating RDD from any source.
+2. Transforming an existing RDD to another RDD.
+3. Performing some action on the RDD
+4. Saving the data into some location(This is also an action)
+
+Consider you have created an RDD from a file which has 1000 lines.
+Say the file is divided into 2 blocks b1, b2 of 500 lines each. Both this block will be
+associated with the same RDD. Any operation done on that RDD will be internally carried out
+on both the blocks.
+
+These blocks are called as partitions.
+
+## Creating an RDD
+
+RDD can be created using 2 ways.
+    1. Loading an external dataset.
+        val lines = sc.textFile("Your file Path Here")
+
+    2. Using parallelize or makeRDD method on sc object.
+        scala> val nameList=List ("suraj","Prasad", "Kiran")
+            nameList: List[String] = List(suraj, Prasad, Kiran)
+        scala> val nameRdd=sc.parallelize(nameList)
+        scala> val nameRdd=sc.makeRDD(nameList)
+            nameRdd: org.apache.spark.rdd.RDD[String] = ParallelCollectionRDD[O] at parallel
+            ize at <console>:26
+
+
+Note: There is no difference between makeRDD and parallelize method.
+In fact, makeRDD internally uses parallelize. Both methods gives you ParallelCollection RDD
+
+
+## Features of RDD :
+* Immutable:
+    Once a RDD is created, it cannot be changed. It means when a node processing some part
+    of a RDD dies, the driver program can recreate those parts and assign the task of
+    processing it to another node, hence completing the data processing job successfully.
+    Since the RDD is immutable, splitting a big one to smaller ones, distributing them to
+    various worker nodes for processing, and finally compiling the results to produce the
+    final result can be done safely without worrying about the underlying data getting
+    changed.
+
+* Distributed and Resilient
+    If Spark is running in a cluster mode where there are multiple worker nodes available to
+    take the tasks, all these nodes will have different execution contexts. The individual
+    tasks are distributed and runs on different JVMs. All these activities of a big RDD
+    getting divided into smaller chunks, getting distributed for processing to the worker
+    nodes, and finally, assembling the results back, are completely hidden from the users.
+    Resilient means fault-tolerant. Spark has its own mechanism for recovering from the
+    system faults and other forms of errors which occur during the data processing and hence
+    this data abstraction is highly resilient.
+
+* In-memory
+    Spark does keep all the RDDs in the memory as much as it can. Only in rare situations,
+    where Spark is running out of memory or if the data size is growing beyond the capacity,
+    it is written to disk. Most of the processing on RDD happens in the memory, and that is
+    the reason why Spark is able to process the data at a lightning fast speed.
+
+* Data locality
+    Spark tries its level best to stay as local as possible to the data. In hafs, the spark
+    creates the partition on the local data so that the data need not be shuffled.
+
+* Lazy Loading
+    No matter, how much RDD you create, the RDD is never executed unless you perform some
+    action on it. Transformation creates a new RDD, but it also does not process any data. It
+    simple created the DAG representation of the operations and processing starts only when
+    some actions are triggered on it.
+
+* Recomputed
+    Whenever you run the spark action, the RDD is recomputed every time. In case certain RDD
+    could be used multiple times, then use persist) or cache() to persist it in the memory so
+    that, that particular RDD is not computed again and again.
+
+* Driver Program
+    Every spark program has a driver program, which has main method that hosts the spark
+    context object
+    It is the master node for the job.
+    It hosts Task scheduler which converts the whole Job into task and schedules them in the
+    worker executor.
+
+
+## SparkContext:
+It is an object that represents connection to a computing cluster.
+In spark-shell, a variable sc represents the SparkContext object and it is automatically
+available for you.
+In our word count program, we had written the below code to get access to spark context.
+Once you have sparkcontext (sc) available, you can build your RDD from any data source.
+
+val conf = new SparkConf () -setMaster ("local") -setAppName ("My App")
+val sc = new SparkContext (cont)
+val inputRDD= sc.textFile (inputFile)
+
+Note: In the above code, we have setMaster= local, local is a fixed value to tell that we
+want to run spark in the local mode. It means only 1 thread where you will have driver and
+executors and it does not connect to any machine.
+My App is the application Name.
+From your terminal, you can just type sc to see what exactly it is.
+
+scala> sc
+res0: org.apache.spark.SparkContext = org.apache.spark.SparkContext@148ab138
+
+
+## What happens when we run any operations on RDD?
+
+Let's take the above example of inputRDD, where say input file contains 100 lines, and say
+we are working on a 10-node cluster and say the files are split across into these 10 nodes
+with each node having 10 lines of the file.
+
+All these 10-node cluster are worker node, which runs a special program called Executor
+where the task runs. So, whenever any operations are done on the driver, the driver tells
+the worker node to run them parallel in the Executor. All this communication will happen
+from SparkContext
+
+## Partitions
+Partitions is a logical chunk of a large distributed data set. Both parallelize and make
+RDD has overloaded method that allows you to pass how many partitions should be created
+while creating the RDD.
+
+By default, total number of partitions= total number of cores on all the executor nodes.
+1 Partitions never span multiple machines.
+Tuples in the same partition are guaranteed to be on the same machine.
+Spark assigns one task per partition and each worker can process one task at a time.
+In case you wish to store the data across multiple partitions, you can define the
+parallelize () as shown below.
+
+Note: Here the data from 1 to 100 will split across 5 partitions
+
+scala> val numRDD= sc.parallelize (1 to 100 toList, 5)
+
+scala> numRDD.partitions.size //This is not action or Transformation. It just information
+res38: Int = 5
+
+scala> numRDD.partitions //This is not action or Transformation. It just information
+res39: Array[org.apache.spark.Partition] =
+Array(org.apache.spark.rdd.ParallelCollectionPartition@c7e,
+org.apache.spark.rdd.ParallelCollectionPartition@c7f,
+org.apache.spark.rdd.ParallelCollectionPartition@c80,
+org.apache.spark.rdd.ParallelCollectionPartition@c81,
+org.apache.spark.rdd.ParallelCollectionPartition@c82)
+
+scala> numRDD.foreach(num=>print(s"$num "))
+
+Note: If you see the output, 5 different partitions output was displayed parallelly, hence
+it is not in order. And you will have no clue, which data is in which partitions.
+Open the url, http://localhost:4040 and you will see the below output. The total task shown
+is 5 as you had 5 partitions. Click on the link below the Description option to explore
+more.
+
+## Little talk about Partitions
+
+By default, whenever you are parallelizing the collections, the default number of partition
+is P, where P is total number of logical cores in your computer. ie in my Ubuntu it is 4.
+
+scala> val numRDD= sc.parallelize(1 to 100 toList)
+
+scala> numRDD.partitions.size
+res0: Int = 4
+
+By default, whenever you load the text file, the total partition taken is 2.
+Please open IntelliJ and check the source code of SparkContext. textFile and you will see
+the logic is to use min(default Parallelism,2) and in our case default parallelism is 4, so
+we get always 2.
+
+For Large file in local, the files were split based on the block size of 32 MB
+Eg 834 MB of Data was split into 25 Partitions as 834/32 = 25 Partitions
+
+
+cmd> spark-shell    //launches spark-shell with all possible cores-4 here
+cmd> spark-shell -master local[ *]  //use either of this 2, launches with max possible cores
+scala> val input=sc.textFile(" file:/home/hduser/word1.txt")
+scala> input.partitions.size
+resO: Int = 2
+
+
+Partitions are logical separation of the data in memory. If you are processing HDFS data,
+then by default there will be 1 partition created for each block of 128 MB. However, you
+can define the number of partitions to achieve more parallelism. If you have 4 cores
+available and if you have a file of say 100 MB and you created 6 partitions, then first 4
+partitions will be processed by 4 cores. The remaining 2 partition will wait for their
+turn. Your job is not over till all 6 partitions are processed.
+
+If we assume each partition is taking 5 minutes to process, then it will take 5 minutes to
+process the first 4 partitions, and it will take another 5 minutes to process the remaining
+2 partition. During the second phase only 2 cores are being used, and the remaining are
+enjoying their vacation.
+
+So, the partition should be chosen in such a way that you maximize your resources
+utilization in equal. It is recommended to choose the total number of partitions to be to
+the multiple of number of cores.
+
+If file path doesn't exist, then it is a run time error and not a compile time error.
+Partition inheritance:
+
+Consider, you have created a RDD with some partition say 5. If you do any transformation in
+that RDD, it gives you back a new RDD. The new RDD will have same number of partition that
+the parent RDD has. Similarly, if you execute any Action on it, it will be performed on all
+the RDD.
+
+Example: in the below output the RDD which got created after filter has same number of
+partitions
+
+
+## RDD and HDFS block
+Let's understand how blocks are divided and gets processed at RDD level.
+Assume the below file is stored in your HDFS.
+
+Let's say it is divided into 3 blocks b1, b2, b3 and stored in 3 data nodes of HDFS.
+Let's assume we want to calculate the total salary given to all these employees,
+We will create an RDD pointing to this file in HDFS. You can use local path as well.
+
+employee.txt
+1001, suraj, 5000
+1002, Ishi, 6000
+1003, Kiran, 7000
+1004, Pavan,6000
+1005, Neeraj,8000
+
+Let's say it is divided into 3 blocks b1, b2, b3 and stored in 3 data nodes of HDFS.
+Let's assume we want to calculate the total salary given to all these employees,
+We will create an RDD pointing to this file in HDFS. You can use local path as well.
+
+val conf = new SparkConf().setMaster("local").setAppName ("My App")
+val sc = new SparkContext (conf)
+val inputFile="hdfs://localhost:9000/user/hduser/employee.txt"
+val empRDD = sc. textFile (inputFile)
+empRDD. partitions. size //Would return 2, ie the Minimum partition
+
+empRDD is an RDD pointing to all b1, b2, b3 blocks sitting in different nodes. Since it is a
+spark application, b1 b2 b3 will be loaded in the RAM of these worker nodes.
+
+When we write the logic to sum the salary, the summation will happen locally in all 3 nodes
+and then a global sum will happen on it and finally the output will be returned back to
+driver program. Spark has very deterministic rules on splitting a big RDD into smaller
+chunks for distribution to various nodes and because of that, even if something happens to,
+say, node N1, Spark knows how to recreate exactly the chunk that was lost in the node N1 and
+continue with the data processing operation by sending the same payload to node N3.
+
+Spark does a lot of processing in its driver memory and in the executor memory on the
+cluster nodes. Spark has various parameters that can be configured and fine-tuned so that
+the required resources are made available before the processing starts.
+
+
+## Glom()
+
+The glom() function in Spark RDDs collects all elements within each partition into a single
+array (list), creating a new RDD where each element represents one partition's complete
+contents.
+
+## Primary Purpose of Glom:
+    * Converts RDD[T] → RDD[Array[T]] (Scala) or RDD[list[T]] (Python)
+    * Groups partition data locally—no shuffle operations needed
+
+
+## Key Differences Glom vs Collect:
+Aspect	                glom()	                                collect()
+Input	                RDD[T]	                                RDD[T]
+Output	                RDD[Array[T]]                           Array[T]
+                       (partition-wise lists)	                (all data on driver)
+When Data Moves	        Stays distributed until action	       All data → driver immediately
+Partitions Preserved	Yes (each partition → one Array)	    No (flattens everything)
+Shuffle	                None	                                Network shuffle to driver
+Risk	                Low (partition-level only)	            High OOM on driver
+
+
+

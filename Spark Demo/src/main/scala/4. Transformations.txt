@@ -1,0 +1,427 @@
+## Transformation and Actions:
+
+Transformations are operations on an Existing RDD, that returns another RDD.
+Example: when you filter data from an RDD, you get another RDD.
+
+Actions are operations that evaluates your RDD and transformations and gives you back the
+result.
+
+Action may return the result to driver program or may write data into file etc. Action will
+never
+return any RDD, it will return you some other datatype.
+
+
+## Types of Transformation:
+Transformations are of 2 types
+
+# Narrow Transformation:
+    * The transformation where all data from 1 partition goes to the same partition with
+        transformation applied on child RDD.
+    * In other word, Every parent Partition will have 1 child Partition and the Child
+        Partition is never inherited from Multiple Parent Partitions.
+
+      Eg: When you do a map, filter, mapPartitions, flatMap etc
+    * It is fast as no shuffling is needed.
+
+# Wide Transformation:
+    * The transformation where the child partition may get data from various partition of
+      parent RDD is called wide Transformation.
+      Eg: Intersection, Distinct, GroupByKey, ReduceByKey, Join, Cartesian, Repartition,
+      Coalesce
+
+    * It is slow as it needs some data shuffling.
+
+
+# Some Transformations:
+
+We will explore some Transformation in this chapter. We will explore more
+transformations as we move to various different chapters
+    1. map
+    2. flatMap
+    3. mapPartitions
+    4. glom
+    5. mapPartitionsWithindex
+    6. filter
+    7. distinct
+    8. union
+    9. intersection
+    10. subtract
+    11. cartesian
+
+You can get list of all the operations allowed by hitting TAB after RDDName and.
+
+$ spark-shell local
+
+scala» val words=List("apple ball apple", "apple ball apple")
+words: ListString) = List(apple ball apple, apple ball apple)
+
+scala> val wordsRDD=sc.parallelize words)
+scala> wordsRDD. <TAB>
+
+# Map and FlatMap
+We have already seen that in our word count example. But let's iterate it again.
+Map and Flat
+
+Map does not do a shuffle.
+
+scala> val lineSplit=wordsRDD.map(line=>line.split(" "))
+lineSplit: org.apache.spark.rdd.RDD[Array[String]] = MapPartitionsRDD[9] at map at <console>:25
+
+scala> lineSplit.collect
+res5: Array [Array[String]] = Array(Array(apple, ball, apple), Array(apple, ball, apple))
+
+scala> lineSplit.collect.flatten
+res6: Array [String] = Array(apple, ball, apple, apple, ball, apple)
+
+scala> val lineSplit=wordsRDD.flatMap(line=>line.split(" "))
+lineSplit: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[10] at flatMap at <console>:25
+
+scala> lineSplit.collect
+res8: Array [String] = Array(apple, ball, apple, apple, ball, apple)
+
+As we have observed, if a map gives you an Array of Array and If you wish to extract all the
+inner array into the outer array, you will use flat Map.
+
+# What is the difference between flatMap and collect.flatten ?
+
+flatMap works on the rdd level and are distributed
+collect bring the data to the driver and does the flatten on it.
+So in collect. flatten you are actually working on scala Array, as collect gives you an
+array.
+
+scala> val numRDD=sc.parallelize|(1 to 10).toList)
+
+scala> val evenNumbers= numRDD.map(num=> {if(num%2==0) num else 0 })
+
+scala> evenNumbers.collect
+res4: Array [Int) = Array (0, 2, 0, 4, 0, 6, 0, 8, 0, 10)
+
+scala> val evenNumbers= numRDD.map(num=> {if(num%2==0) Some(num) else None })
+
+scala > evenNumbers.collect
+res5: Array [Option[Int]] = Array(None, Some(2), None, Some(4), None, Some(6), None,
+Some(8),
+None, Some( 10))
+
+scala> val evenNumbers= numRDD.flatMap(num=> {if(num%2==0) Some(num) else None})
+
+scala> evenNumbers.collect
+res6: Array [Int] = Array(2, 4, 6, 8, 10)
+
+
+## mapPartition
+
+map() works on each element, and does something on each element given. We can assume map()
+like foreach which get called N times, where N = no of elements in the collection.
+
+scala> val numRDD= sc.parallelize(1 to 10 toList)
+
+scala> val numRDD2= numRDD.map(num=> {prints"$num "); num })
+numRDD2: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[12] at map at ‹console>:25
+
+scala> numRD2.collect
+6 8 4 2 3 1 5 9 10 7 res9: Array[Int] = Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+mapPartitions will be executed for each partition and you will be able to see them as shown
+below.
+mapPartitions will accept an iterator and returns back an iterator.
+
+val numRDD= sc.parallelize 1 to 10 toList, 3)
+
+numRDD.glom.collect
+res4: Array[Array[Int]] = Array(Array(1, 2, 3), Array(4, 5, 6), Array(7, 8, 9, 10))
+
+val numRDD2= numRDD.mapPartitions(it=> { val myList = it.toList
+                                            println(s"partition called $myList"';
+                                            myList.map(x=>x*2).iterator
+                                       })
+numRDD2: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[16] at mapPartitions at
+<console>:25
+
+scala> numRDD2.collect
+partition called List(4, 5, 6)
+partition called List(1, 2, 3)
+partition called List(7, 8, 9, 10)
+res5: Array [Int] = Array(2, 4, 6, 8, 10, 12, 14, 16, 18, 20)
+
+Note: In case of mapPartition, you can always define an initialization logic before you
+work on the partitioned data. This will actually speed up your process. Assume all this
+data needs to be stored in the database. So, in that case you will have to write the code
+in the map function as shown below
+
+val numRDD2= numRDD.map(num=> {  val db Conn= "Your logic here"
+                                 val num=num *2;
+                                 //add data to database
+                                prints"$num "); num
+                              })
+
+If you see, In the above code, the db connection logic will be executed every time, which
+is unnecessary. You cannot keep that code outside of the map(in your driver program)
+because that is supposed to work on the worker node.
+
+To overcome this problem, You have map Partitions which can be used to write some
+initialization logic per partition.
+
+Refer the below code, where we can have initialization logic as shown below
+This code is a code snippet. You should use IntelliJ and add all the dependencies. Please
+implement this later once we learn creating jars and executing on the cluster.
+
+val numRDD2= numRDD.mapPartitions(it=> {
+                val studentIdList = it.toList
+                Class.forName("oracle.jdbc.driver.OracleDriver")
+                val con=DriverManager.getConnection(
+                "jdbc: oracle:thin:@localhost: 1521:xe", "system", "oracle" )
+                val pst= con.prepareStatement(" Select * from student where studentid=?")
+
+                //Iterator thru list, do your stuff and write it in db.
+
+                studentIdList.map(id => {
+                                    pst.setInt(1,id)
+                                    val rs=pst.executeQuery()
+                                    val student=new Student()
+                                    while(rs.next()){
+                                        student.name=rs.getString(1)
+                                        student.class=rs.getString(2)
+                                        student.marks=rs.getFloat(3)
+                                    }
+                                student
+                }
+                ).iterator
+    })
+
+
+## mapPartitionWithIndex:
+
+It is similar to mapPartitions but it also gives you an index number so that you can use
+them in your logic if needed.
+
+val numRDD= sc.parallelize(1 to 10 toList, 3)
+
+val numRDD2= numRDD.mapPartitionsWithIndex(index,it)=> {
+                                            val myList = it.toList
+                                            println(s"$index -> $myList")
+                                            myList.map (x =>x*2).iterator
+                                            }).collect
+1 -> List(4, 5, 6)
+0 -> List(1, 2, 3)
+2 -> List(7, 8, 9, 10)
+
+numRDD2: Array [Int] = Array(2, 4, 6, 8, 10, 12, 14, 16, 18, 20)
+
+# Why do you need to know the partition number?
+Assume you want to store data in database, such that all the data of a particular partition
+will be put in the same row and you need unique id as primary key and the database table is
+always created freshly.
+
+
+## glom()
+In case you wish to see the data by partition, you can use glom. It is similar to
+mapPartitions but are more easy to implement. It returns each rdd as an array to the Driver.
+
+val numRDD= sc.parallelize(1 to 10 toList, 3)
+
+scala> numRDD.glom()
+res10: org.apache.spark.rdd.RDD[Array[Int]] = MapPartitionsRDD[17] at glom at
+<console>:26
+
+numRDD.glom().collect()
+res38: Array[Array[Int]] = Array(Array(1, 2, 3), Array(4, 5, 6), Array(7, 8, 9, 10))
+
+numRDD.glom().collect()(O)
+res39: Array [Int] = Array(1, 2, 3)
+
+numRDD.glom().collect()(2)
+res40: Array[Int] = Array(7, 8, 9, 10)
+
+numRDD.glom().collect()(2)(O)
+res40: Int=7
+
+
+## filter
+
+scala> val numRDD= sc.parallelize(1 to 10)
+numRDD: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[1] at parallelize
+at <console>:26
+
+
+scala> val evenRDD=numRDD.fi|ter(_%2==0)        --transformation
+evenRDD: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[2] at filter at <console>:25
+
+scala> val oddRDD=numRDD.filter(_%2==1)
+oddRDD: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[3] at filter at <console>:25
+
+scala> evenRDD.collect                          --action
+res0: Array[Int] = Array(2, 4, 6, 8, 10)
+
+scala> oddRDD.collect
+res1: Array(Int]) = Array (1, 3, 5, 7, 9)
+
+
+## Passing function to RDD
+
+scala> val evenRDD=numRDD.filter(_%2==0)              --transformation
+evenRDD: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[2] at filter at <console>:25
+
+If we look into the above code, we are using an anonymous function. The code could have
+been also written as
+
+scala> val evenRDD=numRDD.filter(num=>num%2==0)       --transformation
+
+Let's create a function for num=>num%2==0. Refer to scala functional programming section
+
+val even=(num:Int)=>{num%2==0}
+even: Int => Boolean = <function1>
+
+Let's pass the variable even in the filter method now.
+
+scala> val evenRDD=numRDD.filter(even)          --transformation
+
+scala> evenRDD.collect
+res4: Array (Int) = Array (2, 4, 6, 8, 10)
+
+You can also have a concrete function
+
+scala > def isEven(num:Int)=num%2==0
+val evenRDD=numRDD.filter(isEven)
+
+evenRDD.collect
+res4: Array (Int] = Array (2, 4, 6, 8, 10)
+
+## distinct
+
+scala> val numRDD= sc.parallelize( List (1,2,3,4,1,5,3,6))
+numRDD: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[O] at parallelize at
+<console>:24
+
+scala > val dst= numRDD.distinct
+dst: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[28] at distinct at <console>:26
+
+scala > dst.collect         --removes 2nd occurance
+res1: Array [Int] = Array(1, 2, 3, 4,5,6)
+
+## Union:
+
+It is used to combine 2 RDD together back to back with the duplicates allowed.
+If you are trying to union 2 RDD, and if both RDD has 2 partition each, then the resultant
+RDD will have 4 partition(2+2).
+
+scala> val num1RDD= sc.parallelize(List(1,3,5,7,9), 2)
+num1RDD: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[0] at parallelize at
+<console>:24
+
+scala> val num2RDD= sc.parallelize(List(2,4,6,8,10,11),2)
+num2RDD: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[1] at parallelize at
+<console>:24
+
+scala > val resultRDD= num1RDD.union(num2RDD)
+resultRDD: org.apache.spark.rdd.RDD[int] = UnionRDD[2] at union at <console>:27
+
+scala > resultRDD.collect
+res 1: Array [Int] = Array (1, 3, 5, 7, 9, 2, 4, 6, 8, 10, 11)
+
+scala> resultRDD.getNumPartitions
+res1: Int = 4
+
+scala> num1RDD.glom.collect
+res4: Array [Array[Int]l = Array(Array(1, 3), Array(5, 7, 9))
+
+scala> num2RDD.glom.collect
+res3: Array [Array[Int]] = Array(Array(2, 4, 6), Array(8, 10, 11))
+
+scala> resultRDD.glom.collect
+res2: Array [Array[Int]] = Array(Array(1, 3), Array(5, 7, 9), Array(2, 4, 6), Array(8, 10,
+11))
+
+If we see the below DAG, we have a single stage, and the stage itself contains union
+operation. Union in spark does not shuffle the data. num1RDD and num2RDD contains 2
+partitions each. Hence when we do union, the new RDD will have 4 partition. Since it is a
+combining operation, it really does not shuffle any data.
+
+
+Note: In scala, If 2 list are of different type, then union will give you another
+collection of the highest type.
+
+In Scala
+
+scala> val list1=List (1,2,3,4)
+res7: List[Int] = List(1, 2, 3, 4)
+
+scala> val list2=List(1, "5", 6,"7" )
+res8: List[Any] = List(1, 5, 6, 7)
+
+scala > listl.union(list2)
+res9: List[Any] = List(1, 2, 3, 4, 1, 5, 6, 7)
+
+Whereas in Spark, it does not work
+
+In Spark
+
+val list1RDD=sc.parallelize(List(1,2,3,4))
+
+val list2RDD=sc.parallelize(List(1, "5", 6, "7"))
+
+list1RDD.union(list2RDD)        -throws Error
+error: type mismatch;
+found : org.apache.spark.rdd.RDD[Any]
+required: org.apache.spark.rdd.RDD[Int]
+
+## intersection
+
+When you intersect 2 RDD, you get elements that are common in both of them. It basically
+shuffles the data and bring the common data in the new rdd. You can observe the same
+using the DAG.
+
+scala> val numRDD1= sc.parallelize( List(1,2,3,4,5,6))
+numRDD1: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[7] at parallelize at
+<console>:24
+
+scala> val numRDD2= sc.parallelize( List(5,6,7,8,9))
+numRDD2: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[8] at parallelize at
+<console>:24
+
+scala> numRDD1.intersection(numRDD2).collect
+res3: Array(Int] = Array (5, 6)
+
+
+## Subtract
+
+It gives you the data which is present in RDD1 and not present in RDD2. It also shuffles the
+data and creates a new RDD.
+
+Final RDD will have same number of partitions. 8 in this case.
+
+scala> numRDD1.subtract(numRDD2).collect
+res4: Array[Int] = Array (1, 2, 3, 4)
+
+# Cartesian
+Does the cross product of both the RDD.
+If rdd1 and rdd2 has 3 partition each, then cartesian will create 3*3= 9 or 3^2 partitions.
+Consider IPL match, and say we have 6 Teams
+
+Group1                      Group2
+Mumbai                       Delhi
+Punjab                      Bangalore
+Rajasthan                   Hyderabad
+
+Create a schedule where everyone from Group will play with every other team of Group2
+
+val group1List= List(" Mumbai", "Punjab", "Rajasthan" )
+
+val group2List= List(" Delhi", "Bangalore", "Hyderabad" )
+
+val group1RDD=sc.parallelize(group1List,3)
+
+val group2RDD=sc.parallelize(group2List, 3)
+
+val combination=group1RDD.cartesian(group2RDD)
+
+scala > combination.collect
+res9: Array [(String, String)] = Array((Mumbai, Delhi), (Mumbai, Bangalore), (Mumbai,
+Hyderabad),(Punjab,Delhi), (Punjab, Bangalore), (Punjab, Hyderabad), (Rajasthan,Delhi),
+(Rajasthan, Bangalore),(Rajasthan, Hyderabad))
+
+scala > combination.glom.collect
+res1: Array [Array[(String, String)ll = Array(Array((Mumbai,Delhi)), Array((Mumbai,
+Bangalore)),Array((Mumbai,Hyderabad), Array(Punjab,Delhi)), Array((Punjab,Bangalore)),
+Array(Punjab, Hyderabad)), Array((Rajasthan,Delhi)), Array((Rajasthan,Bangalore)),
+Array( (Rajasthan, Hyderabad)))

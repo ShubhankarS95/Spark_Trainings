@@ -1,0 +1,206 @@
+## Spark
+
+Creator  : Matei Zaharia
+Date : 2012
+Presently working : co-founder and chief technologist of Databricks
+
+In the course of his PhD studies, he created the Apache Spark project and co-created the Apache Mesos project.
+
+API Docs : https://spark.apache.org/docs/latest/
+
+
+## Limitation of Map-Reduce
+1. In a map-reduce program, each phase like Map, Shuffle & Sort, Group By, Reduce
+phase reads and writes the data into the disk every time. The 10 operation drastically
+reduces the speed of the execution by around 100 times as compared to a Spark
+program.
+
+2. When you have multiple map-reduce job chained back to back, the output of each
+map-reduce is written on HDFS which is nothing but written in local file system (Not
+into RAM). This creates a lot of 10 operation to and from Disk.
+
+3. Map-Reduce can work on historical (past) data, and because of slowness it cannot be
+used to process the real time (Just-In) data. It is best fit for batch processing.
+
+
+## Bench Marking: -
+
+- There was a Map-reduce Job, which was executed in 1 iteration, and took 110 Sec where
+Spark took 80 Sec (which is nearly equivalent).
+
+- But the same Map-reduce Job, with 30 Iteration took almost 3500 Sec, where as in Spark it
+just took 80 Sect 29 Sec (1 sec for each iteration)
+
+- Spark was coded in Scala language which is short and precise, therefore spark entire source
+code has around 20,000 Lines of code whereas Hadoop 1 has 90,000 and Hadoop 2 has
+220,000 Lines of code
+
+- The biggest claim from Spark regarding speed is that it is able to "Run programs up to 100x
+faster than Hadoop MapReduce in memory, or 10x faster on disk". Spark could make this
+claim because it does the processing in the main memory of the worker nodes and prevents
+the unnecessary 1/0 operations with the disks. The other advantage Spark offers is the
+ability to chain the tasks even at an application programming level without writing onto the
+disks at all or minimizing the number of write to the disks.
+
+
+* How is Spark Super-Fast?
+
+It comes with a very advanced Directed Acyclic Graph (DAG) data processing engine. What it
+means is that for every Spark job, a DAG of tasks is created to be executed by the engine.
+
+The DAG in mathematical parlance consists of a set of vertices and directed edges
+connecting them. The tasks are executed as per the DAG layout. In the Map Reduce case,
+the DAG consists of only two vertices, with one vertex for the map task and the other one
+for the reduce task. The edge is directed from the map vertex to the reduce vertex. The in-
+memory data processing combined with its DAG-based data processing engine makes Spark
+very efficient. In Spark's case, the DAG of tasks can be as complicated as it can. Thankfully,
+Spark comes with utilities that can give excellent visualization of the DAG of any Spark job
+that is running.
+
+Hadoop (HDFS+ Mapreduce + YARN)
+Spark (HDFS+ Spark + YARN)
+
+
+## Will Spark Replace Hadoop?
+
+1. Spark is just another processing framework like your map-reduce.
+2. Spark does not have its own storage system like HDFS so needs to be dependent on Hadoop.
+3. Spark does not have cluster manager like YARN but has a local manager and hence
+still dependent on Hadoop.
+4. It heavily depends on Hadoop for storage and cluster. In the real time spark
+component is deployed on Hadoop cluster.
+5. In many companies Hadoop and Spark both are used together where Hadoop is used
+for batch processing job, whereas spark is used of real time job.
+
+# Need for spark
+1. Need for a powerful engine that can process the data in real time, streaming as well as batch mode.
+2. Need for a powerful engine that can respond in sub-second and perform in-memory analytics
+
+
+## What is a Spark 
+Apache spark is a powerful open source processing engine providing real-time streaming as
+well as batch processing with speed, ease of use & sophisticated analysis.
+Hadoop is effective for storing huge amounts of data cheaply, the computations it enables
+with Map Reduce are highly limited and uses a high latency batch model.
+Spark on the other hand uses in-memory computing for the entire job chained together. You
+will also have an option to write the data into the disk if the dataset size is more.
+
+Introduced by UC Berkeley's in 2009, It is a general purpose distributed System, that can run
+up to 100 times faster than Map-reduce.
+
+It provides APis in Java, Scala, Python and R and hence the programmer can choose the
+language of his own choice to write spark Jobs.
+
+It can be well integrated with hadoop and can process existing data.
+
+* RDD(Resilient Distributed Dataset) :
+    1. RDD is the basic abstraction in Spark.
+    2. Represents immutable, partitioned collection of elements that can be operated on in parallel.
+    3. Basic operations available on all RDDs such as map, filter, persist
+    4. RDD actions and transformations can be used for more complex computations
+
+
+## Types of operations on RDD :
+
+We can perform 3 types of operations on any RDD
+1. Transformation:
+    a. Creates a new dataset from an existing one.
+    b. They are lazy in nature and gets called only when some actions are executed.
+    Example: map(), filter(), distinct()
+2. Actions:
+    a. Returning some values back to driver program or writing output to the destinations
+    
+    Example: count(), reduce(), collect(), take()
+3. Persistence:
+    a. For caching dataset in memory for further operations
+    b. Options to store data in memory or in disk or mix
+    c. persist() and cache()
+
+
+## Modules in Spark:
+1. Spark Core
+2. Spark SQL
+3. Spark Streaming
+4. MLlib (Machine Learning Library)
+5. GraphX
+
+
+* Spark core:
+    - It is the execution engine for spark platform.
+    - It provides in-memory computing capabilities to deliver speed, a generalized execution
+        model to support a wide variety of applications
+
+* Spark SQL:
+This component provides an execution engine where we can run hive queries as it is, up to
+100x times faster on existing deployments and data.
+    1. Allows relational queries expressed in SQL or Hive QL to be executed using Spark.
+    2. It allows users to mix SQL and imperative/functional programming
+    3. Provides powerful integration with the rest of the Spark ecosystem (e.g., integrating
+    SQL query processing with machine learning)
+    4. The core of Spark SQL is SchemaRDD now called as DataFrame, a new type of RDD
+    that has an associated schema.
+    5. Runs Hive queries automatically without any modification. As Spark SQL still uses
+    Hive front end and Meta store in Hive.
+    6. It basically gives you compatibility hive data, queries, UDFs
+    7. Standard connectivity between JDBC ODBC Drivers through SAMBA connector with
+    Spark SQL
+    8. A lot of application like tableau will use SAMBA driver to send SQL queries down to
+    spark SQL and Run them at Scale.
+
+* Spark Streaming:
+    1. Enables powerful interactive and analytical applications across both streaming data.
+        It readily integrates with a wide variety of popular data sources including Flume,
+        Kafka, Twitter.
+    2. It processes data in real-time, which helps business to take decisions in real time.
+    3. It integrates with spark batch and interactive processing.
+    4. Processes streams of data on 100s of nodes
+    5. Achieves second scale latency.
+    6. Receives data streams from input sources, processes them in a cluster, pushes out to
+        data-store/dashboard.
+    7. Can receive live data streams from Kafka, Flume, Zero MQ, Twitter etc and can
+        process and write the output to HDFS, databases, dashboards.
+    8. KAFKA can handle 2lakhs events per second for single request single broker.
+    9. It is a way to analyse the real time streams of data coming in like in twitter and do
+        some NLP
+    10. In 2012, Spark streaming was able to process about 60 million records per second on
+        a 100-node cluster. This make it 2-4x faster than other system like Storm and yahoo
+        s4. Netflix also uses spark streaming.
+    11. Flume and Kafka can be buffer for spark streaming
+
+
+* ML Lib:
+    1. It is a scalable machine learning library that delivers both efficiency and high-quality
+        algorithms.
+    2. Machine learning algorithms are iterable in nature which can run for hours in map
+        reduce.
+    3. Spark has ML Lib where the whole operation will be in memory.
+    4. Contains some algorithm like classification, Regression, Clustering, Collaborative
+        filtering.
+    5. Some statistics like max, mean, variance, random data generation, correlation,
+        hypothesis testing, decision trees.
+    6. A Machine learning algorithm k-Means Clustering needs more than 17 Map-Reduce
+        Job even for 5 MB of data.
+
+
+* GraphX:
+    1. It is a graph computation engine on top of Spark that enables users to graph data at
+        scale.
+    2. Assume we have A->B->C where A, B, C are 3 people such that A and B are direct
+        friends and B and C are direct friends.
+        If, A and B has 1st degree connection whereas A->C has 2nd degree connection. To
+        find out the 1st degree connection and 2nd degree connection, we need months by
+        using map-reduce code. Even it takes same time with GraphX of spark.
+    3. If you use GraphX with neo4j it may take minutes to hours. So, it is recommended to
+        use graph engines to handle graph data.
+
+
+* SparkR
+    A component for data science team, who can use R to schedule the job in Spark.
+
+
+## Features of Spark :
+    1. In memory computation (faster speed, Real time computation, Low latency)
+    2. Poly glot (Spark programming can be written using Java, Scala, Python, R)
+    3. Hadoop Integration
+    4. Machine Learning modules
+    5. Lazy Evaluation. It computes only when it is needed.

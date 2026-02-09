@@ -1,0 +1,218 @@
+## Repartition
+
+If you want to change the number of partition and either want to increase or decrease the
+partition, then you should use repartition.
+
+Example Say you are working with a gz file. As you know gz file is not splittable. You cannot
+get multiple partition for the file and that file will have to be processed by single
+thread. You can use 7z software to convert a file to gz in windows or use the below command
+in linux to create a gz file
+
+cmd> tar -czf word1.txt.gz word1.txt
+
+scala> val input=sc.textFile("file:/home/hduser/Desktop/word1.txt.gz")
+scala> input.partitions.size
+res6: Int = 1
+If you would like to make multiple partition out of it, you need to use repartition that is a
+transformation that gives you new rdd which will have more partition. Once you have more
+partition then you can again run your action in parallel on them.
+
+scala> val input2=input.repartition(5)
+input2: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[5] at repartition at <console>:25
+
+scala> input2.partitions.size
+res1: Int = 5
+
+scala> input2.getNumPartitions //This also works
+
+When we create an RDD from a collection, and say we want to create a rdd from 1 to 100
+and if we chose 10 partition to be used, then the list will be divided in such a way that
+first 10 numbers would be taken by partition 0, next 10 numbers by partition 1 and so on.
+You can also do partition based on your custom logic. You will have to define your own
+partitioner. We will discuss this later.
+
+Please note, repartition always does a full shuffle, meaning the data is completely
+rearranged. Let's see the below example. We have created an RDD with 4 partition as shown
+below.
+
+val numRDD= sc.parallelize( 1 to 20,4)
+
+numRDD.glom().collect()
+
+Let's repartition it to 2 partition. If you see the whole data is shuffled and the
+partitions are recreated again and data is evenly distributed.
+
+val numRDD2 = numRDD.repartition(2)
+
+numRDD2.glom().collect()
+
+Repartition always causes shuffling of data and it can be seen in the DAG diagram.
+Also, if you see there are 2 stages, First stage ends at repartition and 2nd ends at collect.
+
+
+## coalesce:
+
+Please be warned that repartition will case the data to shuffle a lot of data across the
+network and will be bit expensive.
+
+You can also use a method called coalesce() which also does repartitioning but with minimal
+shuffling of the data across the cluster.
+Suppose you have 5 partition in a node, and you wish to merge all the data of those 5
+partition into few partition say 2 partition, then you can use coalesce(), here no data will
+be moved.
+
+scala> val rdd1 = sc.parallelize(1 to 20,5)
+
+scala> rdd1.glom.collect
+res8: Array [Array[Int]] = Array(Array(1, 2, 3, 4), Array(5, 6, 7, 8), Array(9, 10, 11, 12),
+Array(13, 14, 15, 16), Array(17, 18, 19, 20))
+
+scala> val rdd2= rdd1.coalesce(2)
+rdd2: org.apache.spark.rdd.RDD[Int] = CoalescedRDD[20] at coalesce at <console>:23
+
+scala> rdd2.glom.collect
+res9: Array [Array[Int] = Array(Array(1, 2, 3, 4, 5, 6, 7, 8), Array(9, 10, 11, 12, 13, 14,
+15, 16, 17, 18, 19, 20))
+
+Suppose you have 5 node and each node has 3 partition. Using coalesce, if you reduce the
+partition to 5, then all 3 partition of each node, could be combined into 1 partition. Hence
+here also you don't need any data movement.
+
+However, if you further wish to reduce the total partition to 3, then there will be only 2
+nodes data movement.
+
+
+## Example of repartition() and coalesce()
+
+Spark stores the data in form of RDD. It stores the data into partitions. The partitions are
+computed parallel.
+Let's create an RDD of Numbers
+
+val numRDD= sc.parallelize( (1 to 10). toList)
+
+numRDD.partitions.size      //4
+
+numRDD.saveAsTextFile(" file:/home/hduser/output21.txt" )
+
+When you write this rdd into the file, it will result in 4 different files as it creates 1
+file per partitions
+In case you wish to reduce the partition number from 4 to say 2. You can use coalesce as
+shown below.
+
+val numRDD2=numRDD.coalesce(2)
+
+numRDD2.partitions.size //2
+
+numRDD2.saveAsTextFile("file:/home/hduser/output23.txt")
+
+DAG shows that the data was not shuffled.
+
+coalesce does not modify the existing RDD, in fact creates a new RDD for you.
+
+coalesce cannot be used to increase the number of partitions. Example the below code does
+not throw any error, but will simply be ignored.
+
+scala> val numRDD2=numRDD.coalesce(20)
+numRDD2: org.apache.spark.rdd.RDD[Int] = CoalescedRDD[72] at coalesce at <console>:30
+
+numRDD has 4 partitions and hence numRDD2 will also have 4 partitions.
+Coalesce Algorithm merges 2 or more partition of the same node into 1, hence not making
+the data movement.
+
+You can use repartition to either increase or decrease the partitions.
+
+scala> val numRDD2=numRDD.repartition(20)
+numRDD2: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[79] at repartition at
+<console>:30
+
+scala> numRDD2.partitions.size
+res60: Int = 20
+
+The repartition algorithm does a full data shuffle and equally distributes the data among
+the partitions. It does not attempt to minimize data movement like the coalesce algorithm.
+
+
+val numRDD= sc.parallelize(1 to 20,4)
+
+numRDD.glom().collect()
+res43: Array[Array[Int]] = Array(
+Array(1, 2, 3, 4, 5),           // p1
+Array(6, 7, 8, 9, 10),          // p2
+Array(11, 12, 13, 14, 15),      // p3
+Array(16, 17, 1,8, 19, 20}      //p4
+
+val numRDD2= numRDD.coalesce (2)
+
+numRDD2.glom().collect()
+res44: Array[Array[Int]] = Array(
+Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),     //  P1+ P2    (P1 was not disturbed, P2 was moved)
+Array(11, 12, 13, 14, 15, 16, 17, 18, 19, 20} //  (P3 was not disturbed, P4 was moved)
+
+
+Note: coalesce could produce skewed partitions, means each partition might not be of equal
+size. and it will be slow to work on skewed data. So, you will have to check which works
+best for you.
+If you want the coalesce to do a full shuffling, you can try the below
+
+val numRDD3= numRDD.coalesce(2,true)    //shuffle is enabled, evenly distributed
+
+scala> numRDD3.glom().collect()         //See the DAG output below.
+res 10: Array[Array[Int]] = Array(
+Array(1, 3, 5, 7, 9, 11, 13, 15, 16, 18, 20),
+Array(2, 4, 6, 8, 10, 12, 14, 17, 19)
+)
+
+val numRDD3= numRDD.coalesce(2,false) //shuffle is disabled,default
+
+Note: Coalesce minimizes data movement But cannot avoid data movement if you have 4 nodes
+with some data and you want to coalesce it to 2 partition.
+
+## Algorithm of Partition
+
+repartition or coalesce with true, uses HashPartition to distribute the data.
+If you choose total partition=2, than it uses the Hash Partition to distribute the entire
+data, some of the data would be pushed to partition 1 and some of the data would be pushed
+to partition 2
+
+# Difference between repartition and coalesce?
+
+repartition internally is a call to coalesce with shuffle= true.
+
+def repartition(numPartitions: Int) (implicit ord: Ordering[T] = null): RDD[T] = withScope {
+    coalesce(numPartitions, shuffle = true)
+
+}
+repartition and coalesce with true does full data shuffling.
+
+# Can I increase the partition number with coalesce and shuffles true
+Yes, if you set shuffle= true, then you can increase the partition
+
+scala> val numRDD= sc.parallelize( 1 to 20 toList)
+
+scala> numRDD.coalesce(10).glom.collect
+res16: Array[Array(Int]| = Array(
+Array(1, 2, 3, 4, 5),
+Array(6, 7, 8, 9, 10),
+Array(11, 12, 13, 14, 15),
+Array(16, 17, 18, 19, 20)
+)
+
+scala> numRDD.coalesce(10,true).glom.collect
+res17: Array[Array[Int]] = Array(
+Array(), Array(1), Array(2, 11, 16),
+Array(3, 6, 12, 17), Array(4, 7, 13, 18),
+Array(5, 8, 14, 19), Array(9, 15, 20), Array(10), Array(), Array())
+
+scala > spark.time|numRDD.coalesce(10,true).glom.collect)
+Time taken: 63 ms
+res18: Array[Array(Int]] = Array(
+Array(), Array(1), Array(2, 11, 16), Array(3, 6, 12, 17),
+Array(4, 7, 13, 18), Array(5, 8, 14, 19), Array(9, 15, 20),
+Array(10), Array(), Array() )
+
+
+
+
+
+
+

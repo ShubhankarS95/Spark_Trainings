@@ -1,0 +1,640 @@
+## RDD Actions:
+In the below series we will explore some of the action that we would cover.
+    1. foreach
+    2. collect
+    3. take(N)
+    4. tolocalIterator
+    5. foreachPartition
+    6. top(N)
+    7. takeOrdered(N)
+    8. countByValue
+    9. takeSample
+    10. reduce()
+    11. fold()
+    12. aggregate
+
+
+# foreach
+In spark, foreach is treated as an action that can help you to perform some operation on
+each element of RDD, and it does not return any value. Example, for each element post the
+data into the server and don't care about the return value. If any error, write the error to
+the database. This does not guarantee you the order of execution.
+
+scala > val numRdd= sc.parallelize( 1 to 5 toList)
+
+scala> numRdd.foreach(num=>print(s"$num "))
+5 3 2 1 4
+
+If you are using foreach on your cluster, You will have to look into slave node for the
+output.
+
+In real time, once the final RDD is created, you would really not collect it, but instead
+save in your s3 or hdfs using saveAs TextFile().
+
+scala > val numRdd= sc.parallelize( 1 to 20 toList, 4)
+
+scala > numRdd.foreach(num=>print(s"$num "))
+
+
+# collect()
+It basically returns all the data from the RDDs to the Driver program, which means Driver
+memory should be large enough to hold the entire data. If you have less memory then use
+take(N) and collect N records. This is generally used only for testing and not in production
+with the larger dataset. It returns you the data in
+the same order as of input.
+
+
+# Difference between foreach and collect
+
+foreach is an action that basically get executed in all your worker nodes and hence when
+you try to print all elements, you see the output in random as it is executing parallelly.
+You will see them in job details page (http://localhost:4040)
+
+scala> numRDD.foreach(num=>print(s" $num "))
+6 9 3 1 2 4 5 8 7 10
+
+However, if you use collect, It gets the data serially, collect is used to get all the data
+from all the worker nodes back to the Driver.
+
+scala> numRDD.collect
+res2: Array[Int] = Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+Note: collect sends entire data of RDD to the Driver program, so it should be used only
+when your RDD is small enough to fit into the Driver program Memory. In case you cannot
+fit it in the Memory, you can use take(N), where you can say how many elements to be
+returned to the driver. collect() should not be used in larger dataset.
+
+
+## take(N):
+collect) returns the entire elements of RDD from worker nodes to Driver program. Instead
+of returning all the elements from the RDD, you could ask the spark to just return N
+elements. Spark will make sure to use minimum number of partitions to get this task done,
+and the result does not guarantee the order of the output. This is also good for testing on
+small dataset.
+
+scala> numRdd.take(6)
+res3: Array[Int] = Array(1,2,3,4,5,6)
+
+
+## toLocalIterator:
+Assume you are writing some transformation code and you have your RDD ready to be
+written on the file.
+Let's say you would like to write the file into your local system where your Driver program
+is running. In case you specify file path as file:///home/hduser, assuming that is the path
+of your client system from where you are actually trying to execute the code. You might come
+across a weird situation saying that permission denied.
+It will happen because, all the worker node that is running your RDD will try writing the
+data into its local file system and not into the local file system of Driver machine. In
+such case you can use toLocaliterator to bring an iterator locally which can be then used
+to process the data into local file.
+
+
+
+## But why not collect()?
+
+Whenever you use collect(), all the data from all the RDD will simultaneously travel to
+driver and hence if the RDD size is more than heap memory of the Driver, It will crash.
+toLocallterotor will give you access to iterator which can help you to bring the data,
+partition by partition. You can write huge amount of data into your hard disk as long as
+none of your partition size is greater than the heap size of your driver.
+
+import java.io._
+
+val pw = new PrintWriter (new File(" /home/hduser/output1234"))
+val rdd = sc.parallelize(1 to 100,10).map(_*2)
+//rdd.saveAsT extFile("LocalPath");
+val it= rdd.toLocallterator //will point to all the partitions 1 by 1 to bring 100 records.
+
+for (line <- it) {
+println(" localiterator") //Prints 100 times
+pw.println(line)
+}
+pw.close
+
+
+it points from 1s record to 100th record. But it is just a pointer and doesnot hold the
+data.
+While it executes, It connects to partition 1 by 1, and bring the data present in the
+partitions. So the forloop will iterate for 100 times, But there will be 10 different job
+getting executed and each job actually brings 10 records from its respective partitions.
+
+
+Note: This writes the data into a file Serially and not in a folder, as we are actual using
+file handling concept to write the data into a file.
+This creates 10 different job as foreach(1 job per partition) and you can see them in
+http://localhost:4040
+
+
+## foreachPartition
+
+This action can be used to do some operation for each partition. It is very similar to
+mapPartitions however it does not return any value whereas mapPartitions returns you
+iterator. mapPartitions is transformation and foreachPartition is an action.
+It gets executed only once and you can see them in Spark Ul. Foreach partition executes
+parallel and you will see the order is random
+
+
+val rdd = sc.parallelize(1 to 100,10).map(_*2)
+
+scala> rdd.foreachPartition(iterator=>{
+//Initialize the third party
+//do whatever with your partition data.
+println("Hello")
+println(iterator.toList)
+})
+
+
+## top(N)
+If you need the data in some ordering, you can use this method. By default, it uses the
+default ordering, but you can also pass your own ordering.
+
+scala> val numRDD= sc.parallelize(List (5,7,1,4,9,10, 3))
+
+scala> numRDD.top(2) //sorted in Descending order
+res6: Array[Int] = Array(10, 9)
+
+scala> numRDD.top(10)( Ordering[Int].reverse)
+res7: Array[Int] = Array (1, 3, 4, 5, 7, 9, 10)
+
+scala> numRDD.top(2)( Ordering[Int].reverse)
+res13: Array[Int] = Array(1, 3)
+
+
+Similarly, if you have an Employee object List.
+This will return you the Array, even if you just choose top(1)
+
+case class Employee(name:String, age:Int)
+val empArr = Array(Employee(" Suraj", 29), Employee("Kiran",31), Employee("Isha", 28))
+val empRdd = sc.parallelize(empArr, 2)
+empRdd.top (1)(Ordering[Int].reverse.on(emp=>emp.age))
+res9: Array[Employee] = Array(Employee(Isha, 28))
+
+This will return you the Array, even if you just choose top(1)
+
+
+# Top with heterogenous data
+
+scala> val numRDD= sc.parallelize(List(5,7,1,4,9f, 10.0, " 3" ))
+scala> numRDD.top(2) //Here we got error as Numbers and String does sorting differently
+<console>:32: error: No implicit Ordering defined for Any.
+    numRDD.top(2)
+
+scala> val numRDD= sc.parallelize(List(5,7,1,4,9f, 10.0,3))
+numRDD: org.apache.spark.rdd.RDD[Double] = ParallelCollectionRDD[15] at parallelize at
+<console>:30
+
+scala> numRDD.top(2) //Here we get output as Int, Float, double has similar sorting pattern
+res13: Array[Double] = Array (10.0, 9.0)
+
+
+## takeOrdered (N)
+While top(N) returns you the data in sorted ordered, descending by default.
+takeOrdered(N), does exactly the opposite. It returns you the data in ascending order by
+default.
+
+val numRdd = sc. parallelize(List(5,7,1,4,9,10, 3))
+numRdd.top(3)
+res 12: Array[Int] = Array(10, 9, 7)
+
+numRdd.takeOrdered (3)
+res13: Array (Int] = Array (1, 3, 4)
+
+numRdd.takeOrdered(3)(Ordering[Int].reverse)
+res25: Array [Int] = Array(10, 9, 7)
+
+scala> numRdd.takeOrdered(3).reverse
+res8: Array[Int] = Array(4, 3, 1)
+
+## countByValue
+It can give you the element along with the frequency. You can use this to solve your word
+count program as well. Note here we have used 2 partition while parallelizing the dataset.
+
+scala> val words=List(" apple", "ball", "apple", "apple" )
+words: List[String] = List(apple, ball, apple, apple)
+
+scala> val wordsRDD=sc.parallelize(words, 2)
+wordsRDD: org.apache.spark.rdd.RDD(String] = ParallelCollectionRDD(12] at parallelize at
+<console>:26
+
+scala> wordsRDD.countByValue
+res16: scala.collection. Map|String,Long] = Map(apple -> 3, ball -> 1)
+
+
+## takeSample
+Allows you to get any number of sample values out of your RDD. The first parameter is
+Boolean, which means do you need any randomness. If you set to true, you will get new
+values every time. If you set to false, you will get the same values again and again. The
+2nd parameter is to specify how many elements do you need in the sample.
+
+The uniqueness is really not guaranteed.
+
+scala> val numRDD=sc.parallelize(1 to 100 toList)
+
+scala> numRDD.takeSample(true,1) //give me any 1 number, I want random value
+res33: Array[Int] = Array(89}
+
+scala> numRDD.takeSample(true,1)
+res31: Array[Int] = Array(92)
+
+scala> numRDD.takeSample(true,5)
+res34: Array (Int] = Array(84, 1, 53, 74, 67)
+
+scala> numRDD.takeSample(true,5)
+res35: Array[Int] = Array(78, 22, 53, 26, 29)
+
+scala> numRDD.takeSample(false,1)
+res35: Array[Int] = Array(2)
+
+scala> numRDD.takeSample(false,1)
+res36: Array[Int] = Array(2)
+
+When dealing with partition, most of the action will be executed at 2 levels (locally on
+each partition and then globally on the output of each partition). For example
+
+scala> val numRDD= sc.parallelize(1 to 5, 2)
+numRDD: org.apache.spark.rdd.RDD[Int] = ParallelCollection RDD[10] at parallelize at
+<console>:24
+
+scala> numRDD.sum
+res12: Double = 15.0 //returns you double as it is the highest datatype will create 2
+partition.
+
+P1 -> 1,2
+P2-> 3,4,5
+
+When we say numRDD.sum, both partitions will be summed individually.(Level 1)
+
+P1.sum -> 3
+P2.sum -> 12
+
+Now this data will be shuffled and collected together. And again summed (Level 2)
+3+12 -> 15
+
+## reduce()
+scala> val numRDD= sc.parallelize(1 to 5 toList,1)
+warning: there was one feature warning; re-run with -feature for details
+numRDD: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[16] at parallelize at
+‹console>:24
+
+scala> numRDD.reduce((x,y)=>println(s" $x $y"); x+v})
+1 2
+3 3
+6 4
+10 5
+res13: Int = 15
+
+It starts with 1 and 2, adds the element, becomes 3. The returned value 3 is assigned back
+to x and y will take next element in the series i.e. 3 and so on.
+However, if you don't get the RDD in 1 partition, the processing will be done in parallel
+and you may get the output as shown below.
+
+Make sure the reduce () returns the same output type as input type(int in this example)
+25
+
+
+7 4
+11 1
+12 3
+res13: Int = 15
+2+5 =7 + 4 = 11 +1 =12+3=15
+
+scala> val numRDD= sc.parallelize(1 to 10 toList,3)
+
+scala> numRDD.glom.collect
+res34: Array[Array[Int]] = Array(Array(1, 2, 3), Array(4, 5, 6), Array(7, 8, 9, 10))
+
+scala> numRDD.reduce((xy)={printn(s" $x $y"); x+y})
+1 2
+7 8
+4 5
+15 9
+3 3         →  6
+24 10       -> 34
+9 6         -> 15
+6 34
+40 15
+res35: Int = 55
+
+
+## fold
+It is similar to reduce. However, it takes an initial value and uses that in the evaluation.
+Spark RDD does not have foldLeft and foldRight. We have only fold.
+Output with 1 partition.
+
+val numRDD= sc.parallelize(1 to 5 toList, 1)
+
+scala> numRDD.fold(O)((x,y)=>{println(s"$x $y"); x+y})
+0 1
+1 2
+3 3
+6 4
+10 5
+0 15 //This is because of global fold on local data, even if we have just 1 partition
+res14: Int = 15
+
+0+1 =1 + 2=3 +3=6 +4=10 +5=15
+
+Before we talk about how it works with multiple partition, Lets try this simple example.
+
+val numRDD= sc.parallelize(1 to 5 toList, 8)        // 8 Partitions
+
+numRDD.glom.collect // Array(Array(), Array(1), Array(), Array(2), Array(3), Array(),
+Array(4), Array(5))
+
+val byPartition = numRDD.mapPartitions(iterator => {
+            println("before Fold")          //8 times 3 are empty, 5 have 1 data each
+            val v= iterator.fold(O)((p, v) => {
+                                            println(s"Inside Local Fold $p $w");
+                                            (p + v)     //5 times
+                                            })
+            println(s" After fold: $v") // gives 0 in 3 cases, and 1 2 3 4 5 in other cases
+            Array(v).toIterator
+        } )
+
+byPartition.collect
+
+before Fold
+After fold: 0
+
+before Fold
+Inside Local Fold 0 1
+After fold : 1
+
+before Fold
+After fold: 0
+
+before Fold
+Inside Local Fold 0 2
+After fold : 2
+
+before Fold
+Inside Local Fold 0 3
+After fold: 3
+
+before Fold
+After fold: 0
+
+before Fold
+Inside Local Fold 0 4
+After fold : 4
+
+before Fold
+Inside Local Fold 0 5
+After fold : 5
+
+res34: Array[Int] = Array(0, 1, 0, 2, 3, 0, 4, 5)
+
+Note: don't write the println as it will consume the iterator and you will get wrong output.
+
+For empty partition, the iterator will be empty and hence the logic inside fold will not be
+executed. However, fold() will return 0 for them(initial value)
+
+Since there are 8 partition, It will be called 8 times. For 3 partitions the input iterator
+is  empty and hence you get 0 as output iterator.
+
+Array(0, 1, 0, 2, 3, 0, 4, 5)
+
+scala> byPartition.glom.collect
+res42: Array[Array[Int]] = Array(Array(O), Array(1), Array(O), Array(2), Array(3),
+Array(O), Array(4), Array(5))
+
+scala> byPartition.fold(O) ((x, y) => {println(s" Global Fold $x,$v");(x+y)})
+
+res52: Int = 15
+
+That's how the fold() will work finally
+
+Output with 8 partitions
+
+val numRDD= sc.parallelize(1 to 5 toList, 8)
+
+numRDD.fold(O)((x,y)=>{println(s"$x $y"); x+y})
+res54: Array[Array(Int]] = Array(Array(), Array(1), Array(), Array(2), Array(3), Array(),
+Array(4), Array(5))
+
+Since in this example, we have used RDD with 5 elements and 8 partition. It might not look
+really great. But let's define an RDD with 3 partition, and 10 elements and let's see the
+behaviour.
+
+val numRDD= sc.parallelize(1 to 10 toList, 3)
+// 1 2 3    4 5 6   7 8 9 10    -> o/p of numRDD.glom.collect
+
+numRDD.fold(O)((x,y)=>{println(s"$x $y"); x+y})
+0 1
+1 2
+3 3             // 6 standby
+
+0 4
+4 5
+9 6             //15 standby
+
+0 7
+7 8
+15 9
+24 10           //34 standby
+
+0 6
+6 15
+21 34
+res38: Int = 55
+
+[6,15,34]
+
+By looking at the output, I am guessing the partition. The color are given to highlight.
+
+Local fold
+P1 = 7,8,9,10
+P2 = 1,2,3
+P3 = 4,5,6
+
+Global fold
+6,15,34
+
+## fold with other initial value
+
+val numRDD= sc. parallelize(1 to 5 tolist,8) //8 Partitions
+
+scala> numRDD.fold(2)((x,y)=>{println(s"$x $y"); x+y})
+2 2
+2 5
+2 3
+2 1
+2 4
+
+ [2,2,2,4,7,5,6,3] You still get 3 2's for empty list. This would also receive initial value
+
+2 2             // Initial value (2) with 15 element in the list.
+4 2
+6 2
+8 4
+12 7
+19 5
+24 6
+30 3
+res19: Int = 33
+
+We have 8 partitions, out of which 5 partition holds the data and 3 partitions are empty.
+While processing, the empty partition will also be processed but will just return you back 2
+i.e., initial value.
+Since we have 8 partitions in local aggregation 8*2= 16 will be added to the actual result.
+
+
+Now during the global aggregation, we again get 2 as initial value.
+So, the final output would be 16+2+15 = 33.
+
+scala> val numRDD= sc.parallelize(1 to 5 toList, 1)
+
+scala> numRDD.fold(2)((x,y)=>{println(s"$x $y"); x+y})
+2 1
+3 2
+5 3
+8 4
+12 5
+2 17
+res52: Int = 19
+
+## Assignment:
+Assume you have 5 elements in the list.
+
+val list=1 to 5 toList
+Use fold to find the sum of cube of all the numbers.
+
+Ex output= 1^3+2^3+3^3+4^3+5^3 = 1+8+27+64+125  = 225
+
+
+## Debugging the code:
+
+In case you would like to debug your logic, you can set the debug level as shown below
+
+sc.setLogLevel("ALL")
+
+Other possible values are INFO, ERROR, FATAL, WARN
+
+
+
+## aggregate
+In fold and reduce method, the input and output type must be same.
+But sometime, you may have a requirement where you want to produce some other type
+than what was consumed. In such cases you can use aggregate.
+    aggregate(zeroValue) (seqOp, combOp)
+E.g.: Let's try to find the average.
+
+scala> val numRDD= sc.parallelize(1 to 5 toList, 2)
+The above RDD contains 1,2,3,4,5 in 2 partitions
+P1-> 1,2
+P2->3,4,5
+In such case, the division is difficult without adding them together. So first, we should
+sum it  and then divide it by total element.
+
+But why not ask the RDD to return us total_sum and count of the number it has handled.
+P1 -> 1+2 => ( 3,2) Sum and total number it has handled.
+P2 -> 3,4,5 => (12,3)
+
+Finally
+15/5 = 3
+
+val result = numRDD.aggregate((0, 0))(
+    (acc, value) => (acc._1 + value, acc._2 + 1),
+    (acc1, acc2) => (acc1,_1 + acc2._1, acc1._2 + acc2. _2))
+//result: (Int, Int) = (15,5)
+
+val avg = result._1 / result._2.toDouble
+avg: Double = 3.0
+
+Let's write the same code, by just adding println to debug it. Clearly acc is a tuple as we
+are accessing its element using -_1 and ._2
+
+
+val result = numRDD.aggregate((0, 0)(
+(acc, value) => {
+                println(s"Part 1 $(acc._1) $value S{acc._2}" );
+                (acc._1 + value, acc._2 + 1)
+},
+(acc1, acc2) => {
+                println(s"Part 2 ${acc1,_1} ${acc2,_1}, ${acc1._2} ${acc2._2}");
+                (acc1,_1 + acc2,_1, acc1._2 + acc2._2)
+})
+
+P1-> 1,2 acc(0,0)
+P2->3,4,5 acc(0,0)
+
+Part 1  0 1 0     //Partition 1 ->(1,1)
+Part 1  1 2 1     //Partition 1   (3,2) standby
+
+Part 1  0 3 0      //Partition 2.  -> (3,1)
+Part 1  3 4 1     //Partition 2.  -> (7,2)
+Part 1  7 5 2    //Partition 2   (12,3) standby
+
+Part 2  0 3 , 0 2.    //acc1 (0,0) acc2(3,2)      new acc1-> (3,2)
+Part 2  3 12 , 2 3.   //acc1 (3,2) acc2(12,3)     new acc1 ->(15,5)
+result: (Int, Int) = (15,5)
+
+
+part1 will be executed for N number of times, where N=total element in the array.
+part2 will be executed for P number of times, where P= total number of partitions.
+During execution, few times part might also get executed while part 1 is still processing.
+
+Here (0,0) are the initial values provided to acc tuple. acc._1=0,  acc._2=0.
+
+(acc._1 + value, acc. _2 + 1)
+The values are continuously added to acc._1, and the total number evaluated will be
+calculated in acc._2+1 for each time.
+
+Part1 input is a tuple acc1, and the values one by one.
+
+Finally for each partition, acc tuple holds the value as shown below
+                acc._1   acc._2
+P1  -> 1+2   =>(   3   ,   2   ) Sum and total number it has handled.
+P2  -> 3,4,5 =>( 12    ,   3   )
+
+The part 2 we have 2 inputs acc1, acc2 tuples.
+acc1 holds (0,0) as initial value.
+acc2 holds (3,2) , (12,3)}.
+
+Part 2 will be called for each element (3, 2), (12,3)).
+Finally, part2 gives you below output
+result (15,5)
+
+NOTE:
+Part 1- will be executed for N Times where N=total elements in rdd
+Part 2- will be executed for P times, where P is total number of Partitions
+
+
+----------------------------Actions completed--------------------------
+
+## toDebugString()
+This helps to see the Lineage execution plan, being bottom the first and top the last
+action.
+
+val numRDD= sc.parallelize(1 to 20, 3)
+val div5= numRDD.filter (_%5==0) //5 10 15 20
+val even= div5.filter (_%2==0) //10 20
+val double= even.map(_*2) //20 40
+
+double.toDebugString
+res34: String =
+    (3) MapPartitionsRDD[33] at map at <console>:25 []
+    | MapPartitionsRDD[32] at filter at <console>:25 |]
+    | MapPartitionsRDD[31] at filter at <console>:25 []
+    | ParallelCollectionRDD[30] at parallelize at <console>:24 []
+
+In the above example(3) written is total number of partition.
+
+#Id
+By default, Spark assigns a default id to each rdd, You can get access to id using id
+function
+
+scala> numRDD.id
+res47: Int = 56
+
+# name
+Each RDD can also have name, By default no name is assigned. You can assign a name to RDD.
+
+scala> numRDD.name
+res49: String = null
+
+scala> numRDD.name="My RDD"
+numRDD.name: String = My RDD
+
+scala> numRDD.name
+res48: String = My RDD

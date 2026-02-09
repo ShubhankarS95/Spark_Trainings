@@ -1,0 +1,73 @@
+Commands to be run in spark-shell
+
+# for find the spark ui , where DAGs and other performances can be checks
+sc.uiWebUrl
+
+## Reading from .txt file
+val input=sc.textFile("word1.txt")
+
+# Fetching the data after reading the files
+
+input.collect()
+-- OR
+input collect
+
+## Getting words which are separated by space
+val words=input.flatMap(line=>line.split(" "))
+-- OR
+val words=input.flatMap(_.split(" "))
+
+## printing the words
+words.collect
+
+
+input.map(_.split(" ")).collect()
+res4: Array[Array[String]] = Array(Array(apple, apple, ball), Array(apple, apple, ball), Array(apple, ball, ball), Array(apple, ball), Array(apple), Array(ball))
+
+Explanation:
+If you just use map as shown below, It will give you an array of array. Since you
+would like to extract all the elements from inner array and keep it in the outer
+array itself, we are using flatMap. Or you could have also used flatten
+
+val words = input.map(line=> line.split(" "))
+scala> words.collect
+res3: Array[Array[String]] = Array(Array(apple, apple, ball), Array(apple, apple
+ball), Array(apple, ball, ball), Array(apple, ball), Array(apple), Array(ball))
+elements
+
+scala> words.collect.flatten
+res4: Array[String] = Array(apple, apple, ball, apple, apple, ball, apple, ball,
+ball, apple, ball, apple, ball)
+
+
+
+
+5. Start Emitting (word, 1) for each word
+scala> val count1PerWords = words.map(word => (word, 1))
+count1PerWords: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD(5] at
+map at <console>:28
+
+scala> count1PerWords.collect()
+res4: Array[(String, Int)] = Array((apple, 1), (apple, 1), (ball, 1), (apple, 1),
+(apple, 1), (ball, 1), (apple, 1), (ball, 1), (ball, 1), (apple, 1), (ball, 1),
+(apple, 1), (ball, 1))
+
+We got an array of tuples, where tuple contains (String, Int)
+
+scala> val counts = count1PerWords.reduceByKey{case(counter, nextVal) => counter+nextVal }
+counts: org.apache.spark.rdd.RDD[(String, Int)] = ShuffledRDD[4] at reduceByKey at
+<console>:28
+
+Reduce by key, first groups the data by key
+("apple", [1,1,1, 1,1,1,1]}
+("ball", [1,1,1,1, 1,1])
+
+And calls the function by passing counter and next value and every time the result is
+assigned back to the counter
+
+6. Save the output to a local file
+scala> counts.saveAsTextFile("d:/output/word Count.txt")
+Note: The above program creates a folder with the name wordCount.txt and not the
+file.
+You will find part-00000 storing (apple,7) and part-00001 storing (ball, 6).
+We will learn later, why it was saved in 2 different files.

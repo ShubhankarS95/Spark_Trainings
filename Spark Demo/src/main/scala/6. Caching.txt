@@ -1,0 +1,119 @@
+## Caching RDD
+
+Spark RDD are lazily evaluated, which means transformations are done only when any
+actions are triggered on it. An RDD could be possibly used multiple times.
+
+Consider an RDD contains some messages and it needs to be classified into different
+category and each message could be classified across many categories. In such case you
+need to use the RDD iteratively across multiple pattern. Here you may be interested to
+cache the RDD, so that you can use it again and again.
+
+This process may give you quick performance, as the cached RDD will not have to be
+evaluated again.
+
+When we cache the RDD, the node that computes that RDD stores their partition of data. In
+case the node that has the partition fails, then spark will recompute the lost partition of
+the data from the parent RDD. By default, the data is stored in non-serialized way.
+An RDD can be cached using 2 approaches.
+
+rdd.cache : The RDD will be stored in MEMORY_ONLY mode
+Note: The _2 version means 2 copy will be maintained for those rdd.
+rdd.persist: Here the RDD can be stored in other modes like.
+• MEMORY_ONLY/ MEMORY_ONLY_2
+• MEMORY_ONLY_SER/ MEMORY_ONLY_SER_2
+• MEMORY _AND_DISK/ MEMORY_AND_DISK_2
+• MEMORY_AND_DISK_SER/ MEMORY_AND_DISK_SER_2
+• DISK_ONLY/ DISK_ONLY_2/ DISK_ONLY_3
+• OFF_HEAP
+
+
+Note: The _2 version means 2 copy will be maintained for those rdd.
+
+## MEMORY_ONLY:
+The data is completely stored in memory RAM as java object in JVM in a
+de-serialized form. IF you have 4 GB of data to be loaded in RDD, and if you have 3 GB of
+memory available in IVM, it will cache some portion and will not cache some portion. The
+portion, which were not cached, will be recomputed later whenever needed. This requires
+more memory and at the same time, your processing power should be high.
+
+Store RDD as deserialized Java objects in the JVM. If the RDD does not fit in memory, some
+partitions will not be cached and will be recomputed on the fly each time they're needed.
+This is the default level.
+
+
+## MEMORY_ONLY_SER:
+
+The data is stored in RAM as java serialized object. The data is stored in byte ll per
+partitions. Since the data is stored in a Serialized fashion, we need a faster serializer to
+serialize and deserialize it. As data is serialized, it takes less memory however it also
+increases overhead of deserialization when required. It does not use disk.
+
+We generally use KyroSerializer to take care of Serialization and deserialization.
+
+## MEMORY_AND_DISK:
+The data is completely stored in RAM as java object in JVM in de-serialized form. If the data
+does not fit completely in memory, then it is stored in the disk and retrieved from disk
+whenever required. Here also the storage is high and the processing time will be medium.
+
+## MEMORY_AND_DISK_SER:
+Similar to MEMORY_ONLY_SER but it stores and pushes the partitions that does not fit into
+memory into DISK
+
+##DISK_ONLY
+
+Caches the data completely in Disk. Takes more time to process since it is not in-memory
+
+Note: MEMORY_ONLY and MEMORY_ONLY_SER does not push any partitions into the disk.
+They work on only what they have, the data which is not available will be recomputed later.
+
+In case too much of data is cached in memory, then Spark uses Least Recently Used
+algorithm to remove the old partitions. The old partitions will be re-computed later
+whenever it is needed. However, if the cache mode is memory and disk then the data will be
+pushed to disk and later used again without recomputing again.
+
+In case you wish to unpersist the data, you can use unpersist().
+
+## Cache:
+
+scala> val numRDD= sc.parallelize(1 to 100 toList, 5)
+
+scala> numRDD.cache
+res3: numRDD.type = ParallelCollectionRDD[4] at parallelize at <console>:24
+
+scala> numRDD.unpersist()
+
+## Persist:
+
+import org.apache.spark.storage.StorageLevel
+val numRDD= sc.parallelize(1 to 100 toList, 5)
+numRDD.persist(StorageLevel.MEMORY_ONLY_SER)
+numRDD.persist() //Default is StorageLevel.MEMORY_ONLY
+//find prime Number out of 100
+//find even Number out of 100
+//find perfect Number out of 100
+numRDD.unpersist()
+
+
+## What is the difference between persist and cache?
+Using cache(), the default storage level is MEMORY_ONLY, which means the RDD could be
+persisted only in memory
+
+However, using persist(), you can define different storage level as discussed above, and
+your RDD will be persisted accordingly.
+
+Note: cache internally uses persist() with no argument.
+
+Persist with no argument internally calls persist with MEMORY_ONLY Storage.
+
+def persist(): this.type = persist(StorageLevel.MEMORY_ONLY)
+def cache(): this.type = persist)
+
+
+
+
+
+
+
+
+
+
