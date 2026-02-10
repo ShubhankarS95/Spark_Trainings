@@ -1,0 +1,939 @@
+# Paired RDD
+
+Spark RDD can have a (key, value) Pair, which is called paired RDD. Such RDD are
+used in aggregation and grouping.
+Spark provides special functions to be used for pair RDD, example
+    -   reduceByKey()
+    -   join()
+
+## Creating Pair RDD
+A paired RDD can be created by writing a map function returning Tuple with 2
+elements
+
+Consider the below example.
+1. Let's create RDD from a list.
+
+scala> val numberRDD= sc.parallelize(1 to 7)
+numberRDD: org.apache.spark.rdd.RDD(Int] = ParallelCollectionRDD[O] at parallelize
+at <console>:24
+
+2. Use map to iterate through element and return a Tuple2 element for them
+
+scala> val evenOddRDD= numberRDD.map(number=>{
+                                            if(number%2==0) ("even", number)
+                                            else    ("odd", number)
+})
+evenOddRDD: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[2] at map
+at <console>:26
+
+3.  Print them, to see if you have got paired RDD now.
+
+scala> evenOddRDD.collect
+resO: Array[(String, Int)] = Array((odd, 1), (even,2), (odd,3), (even,4), (odd,
+5), (even,6), (odd, 7)}
+
+## GroupBy
+It is a transformation used to group data together which has same key.
+This results in data shuffling and it costlier one. You should basically prefer
+reduceBy.
+This can be used on both Pair and unpaired RDD but mostly it will be used on
+unpaired.
+
+## Using with pairedRDD
+
+scala> evenOddRDD.groupBy(data=> data._1).collect
+res6: Array[(String, Iterable[(String, Int)])] = Array((even, CompactBuffer(
+(even,2), (even,4), (even,6))), (odd,CompactBuffer((odd, 1), (odd, 3), (odd, 5),
+(odd, 7))))
+
+scala> val grpRDD= evenOddRDD.groupBy(data=> data._2)
+grpRDD: org.apache.spark.rdd.RDD[(String, Iterable[(String, Int)]l] =
+ShuffledRDD[3] at   groupBy at <console>:25
+
+grpRDD.collect
+res7: Array[(Int, Iterable[(String, Int)])] = Array((1, Compact Buffer ((odd,
+1))}, (2, CompactBuffer ((even,2))), (3, CompactBuffer((odd, 3))), (4, Compact
+Buffer((even, 4))), (5,CompactBuffer((odd,5))), (6, CompactBuffer((even,6))),
+(7,CompactBuffer((odd, 7)))}
+
+It shuffles the data as shown in DAG
+
+## Using with unpairedRDD
+Here you will have provision to write logic to create your own key based on each
+element.
+E.g. produce "even" for 2 4 6 8 and "odd" for 1,3,5,7
+
+scala> numberRDD.groupBy(num=>if(num%2==0) "even" else "odd"). collect
+res 19: Array[(String, Iterable[Int])] = Array((even,CompactBuffer(2, 4, 6)),
+(odd, CompactBuffer (1, 3, 5, 7))}
+
+## Another Example
+scala> var empDept=List(" IT | Shyam","HR| Karan", "IT |Isha", "HR| Suraz")
+empDept: List[String] = List(IT| Shyam, HR | Karan, IT| Isha, HR | Suraz)
+
+It is a list of Key, Value pair
+
+scala> var empDeptRDD= sc.parallelize(empDept)
+empDeptRDD: org.apache.spark.rdd.RDD[String] = ParallelCollectionRDD[6] at
+parallelize at <console>:26
+
+scala> val grpByDept=empDeptRDD.groupBy(line=>line.split("\\|")(0))
+grpByDept: org.apache.spark.rdd.RDD[(String, Iterable[Stringl)] =
+ShuffledRDD[20] at groupBy at <console>:28
+
+Note: Don't write split("|") as it will split everything by character
+
+scala> grpByDept.collect
+res30: Array[(String, Iterable[String])] = Array((HR,CompactBuffer(HR| Karan,
+HR|Suraz)), (IT, CompactBuffer(IT |Shyam, IT| Isha))
+
+scala> grpByDept.keys.foreach(printin)
+HR
+IT
+
+scala> grpByDept.values.foreach(printin)
+CompactBuffer(HR| Karan, HR| Suraz)
+CompactBuffer(IT |Shyam, IT | Isha)
+
+Q. Get only the names from this list(grpByDept) (Assignment) increase the font
+to view it.
+Karan
+Suraz
+Shyam
+Isha
+
+
+## Performing some operations in PairedRDD
+## GroupByKey:
+
+It is used to group the data based on key and it is meant only for pairedRDD,
+which means here you already have key, value and you have no choice to create
+your own key.
+
+In the below example evenOddRDD is already a paired RDD.
+It shuffles the data across the network and hence is expensive.
+Note: groupByKey is not available in normal RDD.
+
+scala> val evenOddKV= evenOddRDD.groupByKey() //Produces Shuffled RDD
+evenOddKV: org.apache.spark.rdd.RDD[(String, Iterable[Int])] = ShuffledRDD[3] at
+groupByKey at <console>:28
+
+scala> evenOddKV.collect()
+res8: Array [(String, Iterable[Int]l] = Array(even,Compact Buffer(2, 4, 6)),
+                                            (odd,CompactBuffer(1, 3, 5, 7)))
+
+
+## Difference between groupBy and groupByKey
+Let's use a simple approach to check the difference between groupBy and
+groupByKey.
+Prepare a dataset.
+
+val data = for {x <- 1 to 10
+                y<- 1 to 3
+                }yield (x, v)
+data: scala.collection.immutable.indexedSeq[(Int, Int)] = Vector((1,1), (1,2), (1,3), (2, 1),
+(2,2), (2,3),(3,1), (3,2), (3,3), (4,1), (4,2), (4,3), (5, 1), (5,2), (5,3), (6,1), (6,2),
+(6,3), (7, 1), (7,2), (7,3), (8,1), (8,2),  (8,3), (9,1), (9,2), (9,3), (10,1), (10,2), (10,3))
+
+val kvRDD = sc.parallelize(data)
+kvRDD: org.apache.spark.rdd.RDD((nt, Int)] = ParallelCollectionRDD(21] at parallelize at
+<console>:26
+
+Let's use groupBy to get only 1 element after grouping.
+
+val grpBy = kvRDD.groupBy(_:_1)
+grpBy.glom().collect()   //created 8 partition and the data is distributed as shown below.
+
+Let's use groupByKey to do the same thing
+
+kvRDD.groupByKey().glom.collect
+
+First of all, both of them produces different output. Please observe the Compact Buffer
+content.
+In groupByKey it is
+((1, CompactBuffer(1, 2, 3)), where as in groupBy it is
+((1, CompactBuffer ((1,1), (1,2), (1,3)),
+
+GroupBy takes 2 stages to complete. You can visualize it at http://localhost:4040
+
+GroupByKey also takes 2 stages to complete. However, they are executed in less phases.
+
+So, the above examples says it all. GroupByKey takes less time to execute than groupBy. As
+well as you can see more data is being shuffled in groupBy.
+
+## Understanding Stages and Tasks
+
+scala> val numRDD= sc.parallelize(1 to 100 toList, 4)
+warning: there was one feature warning; re-run with -feature for details
+numRDD: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[O] at parallelize at
+<console>:24
+
+scala > val evenOddMapRDD = numRDD.map(num=> if(num%2==0) ("even", num) else
+                                             ("odd",",num))
+evenOddMapRDD: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[1] at map at
+<console>:25
+
+scala> evenOddMapRDD.collect
+resO: Array[(String, Int)] = Array((odd,1), (even,2) (odd, 3)....(even 100)
+
+
+scala> val keyWiseRDD= evenOddMapRDD-groupByKey
+
+scala> keyWiseRDD.glom.collect
+res3: Array[Array[(String, Iterable[Int])]] = Array(Array), Array(),
+Array((even, CompactBuffer(2, 4, 6, 8,.. 98, 100)), Array((odd,CompactBuffer(1, 3, 5,•. 99))))
+
+
+scala> val evenOddMapFilterGT80= evenOddMapRDD.filter( kv=> kv._2 > 80)
+
+scala> evenOddMap FilterGT 80.coll ect
+
+scala> keyWiseRDD.glom.collect
+res3: Array[Array[(String, Iterable[Int])]] = Array(ArrayO, Array0,
+Array((even, CompactBuffer (2, 4, 6, 8,. 98, 100))), Array((odd,CompactBuffer (1, 3, 5,.. 99)))}
+
+scala> val evenOddWiseSum= keyWiseRDD.map(kv=> {println ("Hello");(kv._1, kv._2.sum)})
+evenOddWiseSum: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[5] at map at
+<console>:25
+
+scala> evenOddWiseSum.collect
+Hello
+Hello
+res5: Array[(String, Int)] = Array((even, 2550), (odd,2500))
+
+
+scala> val kvPair= even OddWiseSum-groupByKey
+kvPair: org.apache.spark.rdd.RDD[(String, Iterable[Int])] = ShuffledRDD[4] at groupByKey at
+<console>:25
+
+scala> kvPair.glom.collect
+res9: Array[Array[(String, Iterable[Int])]] = Array(Array, Array,
+Array((even, CompactBuffer(2550)), Array((odd, CompactBuffer(2500)))}
+
+Lets again execute collect again and visualize the DAG
+
+scala> kvPair.collect
+res 10: Array[(String, Iterable[Int])] = Array((even,CompactBuffer(2550)),
+(odd,CompactBuffer(2500)))
+
+
+## Why was this skipped
+It is because any action that causes shuffling (i.e. groupBy, groupByKey) are cached by spark,
+so that it does not get executed again and again.
+Check the DAG after executing the below code. You will find the RDD is not recomputed for
+2nd Action
+
+val numRDD= sc.parallelize(1 to 100 toList,4)
+val evenOddMapRDD = numRDD.map(num=> if(num%2==0) ("even",num) else ("odd", num))
+val keyWiseRDD= even OddMapRDD.groupByKey // Shuffle RDD
+keyWiseRDD.collect
+
+val evenOddWiseSum= keyWiseRDD.map(kv=> (kv._1,kv._2.sum))
+evenOddWiseSum.collect
+
+
+## Lets understand it with simple example
+The below operation causes shuffling because of sortByKey
+
+val rdd = sc.parallelize(0 to 5).map ((_1)).sortByKey()
+rdd.count            //Now check the DAG
+rdd.collect         //Now again check the DAG, you will find the previous stage was just skipped
+res3: Array[(Int, Int)] = Array((0,1), (1,1), (2,1), (3,1), (4,1), (5,1))
+
+scala> rdd.getNumPartitions //reduced from 8 to 6, because we have 6 unique keys.
+res11: Int = 6
+
+Note: sortByKey always tries to reduce the total number of partition.so you see here 6
+partition.
+
+val rdd = sc.parallelize(0 to 3).map ((_1)).sortByKey() // would take 4 partitions(0,1,2,3)
+val rdd = sc.parallelize(0 to 100).map((_1)).sortByKey() // would take 8 partitions(max the
+                                                            parent rad had)
+
+Rule: Whenever there is a shuffle operation, the output of shuffle is cached by Spark, as it is
+a huge operation. And hence when you try to recompute it, they are not re-evaluated.
+
+## Keys
+Only gathers the Key
+
+scala > val numRDD= sc.parallelize(1 to 7 toList)
+warning: there was one feature warning; re-run with -feature for details
+numRDD: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[11] at parallelize at
+<console>:24
+
+scala> val evenOddRDD = numRDD.map(num=> num%2==0 match{
+                                                        case true=>(" even",, num)
+                                                        case _=> ("odd",num)
+                                    })
+evenOddRDD: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[12] at map at
+<console>:25
+
+scala> val evenOddKV = evenOddRDD.groupByKey
+
+scala> evenOddKV.keys.collect
+res 10: Array [String] = Array(even, odd)
+
+## values
+Only gathers the Value
+
+scala> evenOddKV.values.collect
+res 11: Array[Iterable[Int]] = Array(CompactBuffer(2, 4, 6), CompactBuffer (1, 3, 5, 7))
+
+
+## first
+
+scala> evenOddKV.first
+res9: (String, Iterable[Int]) = (even, CompactBuffer (2, 4, 6))
+
+scala> evenOddKV.first,_1
+res11: String = even
+
+scala> evenOddkV.first._2
+res 12: Iterable[Int] = CompactBuffer (2, 4,6)
+
+scala> evenOddKV.first._2.foreach(println)
+2
+4
+6
+scala> evenOddkV.first._2.sum
+res 16: Int = 12
+
+## Total count of even and odd numbers
+val evenOddCount= evenOddKV.map{    case(key,values) => { (key, values.size)
+                                }   }
+
+## Count them now
+
+scala> evenOddCount.collect()
+res14: Array[(String, Int)] = Array((even,3), (odd,4))
+
+## reduceByKey:
+It combines the value with same key. Currently, evenOddRDD contains the following.
+
+scala> val numRDD= sc.parallelize(1 to 7 toList)
+
+scala> val evenOddRDD = numRDD.map(num=>    num%2==0 match{     case true=>("even",num)
+                                                                case _=> ("odd", num)
+                                    })
+
+evenOddRDD: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[12] at map at
+<console>:25
+
+scala> evenOddRDD.collect()
+res0: Array [(String, Int)] = Array((odd, 1), (even,2), (odd,3), (even,4), (odd,5), (even,6),
+(odd, 7))
+
+We have a pairedRDD with 2 possible keys (even, odd)
+Let's find the Sum of all even Number and Sum of all odd number.
+Approach: We should group the element by key, such that we get
+odd [1,3,5,7]
+even [2,4,6]
+and then we should add each element of odd and each element of even keys
+
+In scala & spark we can do it using reduceByKey(function)
+
+scala> val sumEvenOdd=evenOddRDD.reduceByKey((x,y)=>{println(s" $x+$y"); x+y })
+
+scala> val sumEvenOdd=evenOddRDD.reduceByKey(_+_) //This also works 10 each element
+sumEvenOdd: org.apache.spark.rdd.RDD((String, Int)] = ShuffledRDD(4) at reduceByKey at
+‹console>:28
+
+scala> sumEvenOdd.collect
+res2: Array[(String, Int)] = Array((even, 12), (odd, 16))
+
+Note:
+reduceBy Key accepts any function that can take (k,v) pair. In this case, when we used
+reduceByKey, it groups by and then for each group it will send the consecutive values i.e.;
+1,3 which gets added, the result 4 is returned which will be again passed with the next
+parameter 5, again 4+5 will be added and result 9 is returned which will again be passed
+with next parameter 7 so finally its 9+7 = 16
+
+## Assignment: Using reduceByKey, find out the max, min number in the group.
+
+Max:
+(odd, 7)
+(even,8)
+
+Min:
+(odd, 1)
+(even,2)
+
+
+## Find the average of phy, chem, math using reduceByKey
+Phy: 50+60= 110/2 = 55
+Chem: 60+70=130/2 = 65
+Maths: 65+80= 145/2 = 72.5
+
+val marksRDD = sc.parallelize(Seq (("phy", 50), ("chem", 60), ("maths", 65), ("phy", 60),
+("chem",70), ("maths",80)))
+
+for each subject, the value will be transformed to (mark, 1)
+
+val mapped = marksRDD.mapValues(mark => (mark, 1))
+
+scala> mapped.collect
+res 18: Array[(String, (Int, Int))] = Array((phy, (50,1)), (chem,(60,1)), (maths, (65,1)),
+(phy, (60,1)), (chem, (70,1)), (maths, (80,1))}
+
+val reduced = mapped.reduceByKey((x, y) => (x._1 + y._1, x._2 + y._2))
+
+For physics, (50,1) will be passed as x, (60,1) will be passed as y and we are adding and
+emitting the marks and total count
+
+scala> reduced.collect
+res21: Array[(String, (Int, Int))] = Array((phy,(110,2)), (maths,(145,2)), (chem,(130,2)))
+
+Now, get the average. For the first iteration x => (phy, (110,2))
+//long approach
+val average = reduced.map{ x => val tuple = x._2
+                                val total = tuple._1
+                                val count = tuple._2
+                                (x._1, total / count)
+                           }
+
+//better use mapValues and map the Tuple2
+val average = reduced.mapValues { case(total Marks, frequency) => totalMarks / frequency }
+
+scala> average.collect
+res23: Array[(String, Int)] = Array((phy,55), (maths, 72), (chem, 65)}
+
+## groupByKey vs reduceByKey
+GroupByKey, moves all the k,v to the reducer worker node, and then does the calculation.
+Which means full data movement.
+Whereas reduceByKey, first does a local aggregation within all partition of each node and
+then the final partitioned output will be collected together and finally evaluated. Thus, it
+reduces data movement.
+
+val wordsRDD= sc.parallelize(List("apple", "ball", "apple", "ball", "apple")
+val wordOne=wordsRDD.map(word=>(word,1))
+
+# groupBykey :
+val wordGrpByKey=wordOne.groupByKey                //ShuffledRDD
+
+wordGrpByKey.collect
+res 1: Array[(String, Iterable[Int])] = Array((apple,CompactBuffer(1, 1, 1)),
+(ball, CompactBuffer(1, 1)))
+
+wordGrpByKey.map{case(x,y) => {println(s" $x $y");(x.y.sum)}}.collect
+res0: Array[(String, Int)] = Array((apple,3), (ball,2))
+//The below code gives you same result.
+
+wordGrpByKey.map{   case(word,it) => {
+                                        println(s"$word $it");
+                                        it.foreach(count=>println(count))
+                                        (word,it.sum)
+                                    }
+            }.collect
+
+## reduceByKey :
+
+val wordGrpByKey=wordOne.reduceByKey((x,y)=> x+y)
+wordGrpByKey.collect
+
+Please visualize the DAG to see the total execution time.
+groupByKey took 3.3s and reduceByKey took 0.6 to execute.
+
+Note: Never use println while measuring the performance.
+
+
+## sortByKey:
+
+This will help you to re-arrange the RDD, based on ascending order or descending order of
+the key.
+
+scala> val listRDD=sc.parallelize(List ("A", 1),(" B",2),("A",3),("в",4)))
+listRDD: org.apache.spark.rdd.RDD[(String, Int)] = ParallelCollectionRDD[5] at parallelize at
+<console>:26
+
+scala> listRDD.sortByKey().collect()
+//ascending order
+res8: Array[(String, Int)] = Array((A, 1), (A,3), (В,2), (В,4)}
+
+scala> listRDD.sortByKey(false).collect()       //descending order
+res8: Array[(String, Int)] = Array((В,2), (В,4), (A,1), (А,3)}
+
+SortByKey causes data shuffling, However it also tries to reduce the partitions
+
+scala> listRDD.sortByKey().getNumPartitions //Partition reduced to 3
+res4: Int = 3
+
+Since we have only 2 keys (A and B),hence it was reduced to 3 partition(2+1 extra). If we
+would have just 1 key, it would have been reduced to 2 partitions.
+
+
+## mapValues(func) :
+Is used to apply a function on each value of a paired RDD
+
+scala> var list= List(("A", 1), ("B", 2), ("A",3),(" B",4))
+
+scala> var listRDD=sc.parallelize(list)
+listRDD contains a list of Tuple2, where tuples has key, value
+
+scala> val incrementedBy1=listRDD.mapValues(x=>x+1)
+incrementedBy1: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[15] at
+mapValues at <console>:28
+
+It goes to each element's value and increments it by 1
+
+scala> incrementedBy1.foreach(print)
+(A,2)(B,3)(A,4)(B,5)
+
+
+# flatMap:
+
+scala> val numRdd= sc.parallelize(1 to 100 toList)
+
+scala> numRdd.filter(_%10==0).collect        //Prints 10,20,30,.... 100
+
+scala> numRdd.flatMap(num=> {if(num%10==0) List(num) else None}).collect
+res 13: Array[Int] = Array(10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
+
+Replace List(num) with Some. It is absolutely fine, As shown below.
+
+scala> numRdd.flatMap(num=> {if(num%10==0) Some(num) else None}).collect
+
+
+## flatMapValues
+
+var listRDD=sc.parallelize(List (("A", 1),("B",,2), ("А",3),("в",4)))
+
+scala> listRDD.flatMapValues(x => (x to 5)).collect
+res2: Array (String, Int)] = Array((A, 1), (A,2), (A,3), (A,4), (А,5), (В,2), (В,3),
+ (B, 4), (B,5), (A,3), (A,4), (A,5), (В,4), (В,5)}
+
+scala> listRDD.mapValues(x => (x to 5)).collect
+res 13: Array [(String, scala.collection.immutable.Range.Inclusive)] = Array(A,Range(1, 2, 3, 4,
+5)), (B, Range(2, 3, 4, 5)), (A,Range(3, 4, 5)), (B,Range(4, 5))}
+
+This will produce k,v pair for each key and value from value to 5.
+
+E.g. A, 1 => (A, 1) ,(A,2),(A,3), (A,4), (A,5)
+     B, 2 => (B,2), (В,3),(В,4),(В,5)
+
+It does not shuffle data and does not alter the number of partitions.
+
+
+## Working with 2 Paired RDD
+
+Consider the below 2 rdd.
+
+var listRDD1=sc.parallelize(List(("A", 1), ("B", 2),("A",3),("B",4)) )
+var listRDD2=sc.parallelize(List(("A",1), ("C",4)))
+
+List all keys that are present in listRDD1 but not in listRDD2
+
+val resultRDD= listRDD1.subtractByKey(listRDD2)         //SubtractedRDD
+
+resultRDD.collect
+resultRDD: Array[(String, Int)] = Array((B,2), (B,4))
+
+It shuffles the data
+
+## Subtract:
+
+scala> val resultRDD= listRDD1.subtract(listRDD2)       //SubtractedRDD
+resultRDD: org.apache.spark.rdd.RDD((String, Int)] = MapPartitionsRDD(30] at subtract at
+<console>:27
+
+scala> resultRDD.collect
+res18: Array[(String, Int)] = Array((B,2), (B,4), (A,3))
+
+scala> resultRDD.collect
+res18: Array((String, Int)] = Array((B,2), (B,4), (A,3))
+
+## Joins on Paired RDD
+
+## Inner join
+
+var listRDD1=sc.parallelize(List(("A",1), ("B" ,2), ("A",3), ("B" ,4)))
+var listRDD2=sc.parallelize(List(("A",1), ("C",4)))
+val innerJoin=listRDD1.join(listRDD2)                       //MapPartitions RDD
+innerJoin.collect
+innerJoin: Array[(String, (Int, Int)]] = Array((A, (1, 1)), (A, (3, 1))}
+
+A is only common K, pair in both the RDD, and hence the join happens between them.
+
+## Left Outer Join
+
+val leftOuterJoin= listRDD1.leftOuterJoin(listRDD2)         //MapPartitionsRDD
+
+leftOuterJoin.collect
+res13: Array((String, (Int, Option(Int]))| = Array((A,(1,Some(1))), (A,(3,Some(1))), (B,(2,None)
+), (B,(4,None)))
+
+Note: The outer join, gives you the data in form of Some and None as there could be data,
+and there could not be data.
+
+DAG is similar to InnerJoin.
+
+## Right Outer Join
+
+val rightOuterJoin=listRDD1.rightOuterJoin(listRDD2)        //MapPartitionsRDD
+
+rightOuterJoin.collect
+rightOuterJoin: Array [(String, (Option [Int], Int))] = Array((A,(Some(1), 1)), (A,(Some(3), 1)},
+(C,(None,4)))
+
+DAG is same as inner Join
+
+## Full Outer Join
+
+listRDD1.fullOuterJoin(listRDD2).collect                    //MapPartitionsRDD
+res 16: Array[(String, (Option [Int], Option[Int]))] = Array((A,(Some(1], Some(1))],
+(A, (Some(3), Some(1))), (B,(Some(2), None)), (B,(Some(4), None)), (C, (None, Some(4)))
+
+DAG is same as inner Join
+
+
+## Interview Question:
+
+JAN
+Element       Count
+    A           2
+    B           1
+    C           3
+    D           5
+
+
+FEB
+Element    Count
+A           3
+B           7
+
+Q :List all elements that missed in FEB
+o/p: [C,D]
+
+Hint: Left Outer Join and filter the second columns that are None
+
+
+# co-group
+It groups the data from both the group with the same key across both RDD.
+
+var listRDD1=sc.parallelize(List(("A", 1), ("B", 2), ("A",3), (" B",4)))
+var listRDD2=sc.parallelize(List(("A",1), ("C",4)))
+
+listRDD1.cogroup(listRDD2).collect                       //MapPartitionsRDD
+res 17: Array[(String, (Iterable[Int], Iterable[Int])] = Array (
+(A,(Compact Buffer(1, 3), CompactBuffer (1))),
+(B,(CompactBuffer (2, 4), CompactBuffer))),
+(C, (CompactBuffer (),Compact Buffer (4))))
+
+It also shuffles the data.
+DAG is similar to inner join.
+
+scala> val cogroup= listRDD1.cogroup(listRDD2)
+
+
+## Find the occurance of each element in rddl and rdd 2
+scala>val result=cogroup.map(data=>{
+                                    | val key=data._1
+                                    | val value=data._2
+                                    | val it1=value._1
+                                    | val it2=value._2
+                                    | (key,it1.size,it2.size)
+                                } )
+
+result: org.apache.spark.rdd.RDD[(String, Int, Int)] = MapPartitionsRDD[20] at map at
+<console>:24
+
+scala> result.collect
+res6: Array[(String, Int, Int)] = Array ((A, 2,1), (В,2,0), (C,0,1))
+
+Usecase: Find all the keys whose values were present in the last data drop and is not
+present this time.
+
+Assignment: Solve the previous Assignment using co-group.
+
+
+## aggregateByKey
+As we all know groupByKey is used to group together the values based on same key across
+all partition. It is really an expensive operation and must be avoided as much as you can.
+Consider you have 10 node cluster, and in each node, there are 2 partitions of data where
+data are stored. All the data is pairedRDD which has A,B,C as possible key. When you
+perform groupByKey, the data will be shuffled across multiple partition of the node and
+hence the performance will go down.
+So, we should look into some alternative, out of which aggregateByKey is one.
+PairRDDFunctions class contains all these methods which are used for Paired RDD.
+Aggregate ByKey shuffles the data.
+
+Let's understand aggregateByKey concept using the example.
+
+val marksRDD = sc.parallelize(Seq("phy", 50), ("chem", 60), ("maths", 65), ("phy", 70),
+(" chem",75), ("maths", 80), ("phy", 15), ("chem", 20), ("maths", 25), ("phy",30),
+("chem", 35),("maths", 40)), 3)
+
+scala> marksRDD.glom.collect
+res 7: Array[Array[(String, Int)]] = Array (
+Array((phy,50), (chem,60), (maths,65), (phy, 70)),
+Array((chem,75), (maths,80), (phy, 15), (chem, 20)),
+Array((maths,25), (phy,30), (chem,35), (maths,40))
+
+marksRDD.reduceByKey((mark1,mark2)=>mark1+mark2).collect
+res33: Array[(String, Int)] = Array((phy, 210), (maths, 190), (chem, 165))
+
+marksRDD.aggregateByKey(O)(
+                            (k1, v1) => println(s" Part 1: $k1 $v1"); k1+v1 },
+                            (k2,v2) => { println(s"Part 2: $k2 $v2"); k2+v2}
+                    ).collect
+Part 1: 0  75
+Part 1: 0  80
+Part 1: 0  15
+Part 1: 75 20
+Part 1: 0  50
+Part 1: 0  60
+Part 1: 0  65
+Part 1: 0  25
+Part 1: 50 70
+Part 1: 0  30
+Part 1: 0  35
+Part 1: 25 40
+
+Part 2: 60 95
+Part 2: 120 15
+Part 2: 155 35
+Part 2: 65 80
+Part 2: 135 30
+Part 2: 145 65
+res5: Array[(String, Int)] = Array((maths,210), (chem, 190), (phy, 165))
+
+Since it is aggregateByKey, it will first perform a groupBy with in the local node so phy will
+form a group
+phy [50,60]
+This is assigned to k1, v1 and hence they are added to become 110.
+In case any other node holds such information, then there also the group will happen.
+Next the second statement (k2, v2) are nothing but adding multiple marks of phy across the
+node.
+
+## CombineByKey
+Acts as a combiner which we have seen in Map-reduce.
+It is the most general aggregation function.
+It also allows you to return the value which is of different datatype than your input.
+
+val marksRDD = sc.parallelize(Seq(("phy", 50), (" chem", 60), ("maths", 65), ("phy", 70),
+("chem", 75), ("maths",80)))
+val combined = marksRDD.combineByKey( (mark) =>(mark, 1),
+                (acc: (Int, Int), v) => (acc._1 + v, acc. _2 + 1),
+                (accl: (Int, Int), acc2: (Int, Int)) => (accl,_1 + acc2,_1, accl._2 + acc2,_2)
+                )
+scala> combined.collect()
+res38: Array[(String, (Int, Int)]] = Array((phy,(120,2)), (maths, (145,2)), (chem, (135,2))}
+
+## How it Works?
+
+combineBy Key has 3 part.
+1. Part1-createCombiner, which gets called only once for each key.
+As per our example we have 3 unique key phy, chem, maths. So parti will be called
+only once per key.ie the first time a key is encountered.
+This create the initial value for the accumulator for that key.
+2. Part2 - mergeValue, which gets called when key already has an accumulator.
+3. Part 3- mergeCombiners is called when more than one partition has accumulator for
+same key.
+
+## Lets Debug with print statement
+Note: I am using only 1 partition.
+
+val marksRDD = sc.parallelize(Seq ("phy", 50), ("chem", 60), ("maths", 65), ("phy", 70),
+("chem",75), ("maths", 80)), 1)
+
+val reduced = marksRDD.combineByKey(
+                (mark) => { println(s" Part 1: (${mark},1)"); (mark, 1) },
+                (acc: (Int, Int), v) = {println(s"""Part 2: (${acc,_1} + ${v}, ${acc._2} + 1)""")
+                                       (acc._1 + v, acc._2 + 1)
+                                       }
+                (acc1: (Int, Int), acc2: (Int, Int)) => {
+                    println(s"""Part 3: (${acc1._1} + ${acc2._1}, ${acc1,_2} + ${acc2._2})""")
+                    (acc1._1 + acc2._1, acc1._2 + acc2._2)
+                }
+             )
+reduced.collect
+
+Part 1: (50,1)
+Part 1: (60,1)
+Part 1: (65,1)
+Part 2: (50 + 70, 1 + 1)
+Part 2: (60 + 75, 1 + 1)
+Part 2: (65 + 80, 1 + 1)
+res 12: Array[(String, (Int, Int)l] = Array((maths,(145,2)), (chem,(135,2)), (phy,(120,2)))
+
+
+In above example:
+Only 1 partition is used. Since you have 3 different keys phy, chem, maths so part1 got
+executed only 1 time each which just assigns the value of accumulator to 1.
+For phy we got (50,1), chem (60, 1), math (65,1)
+Next time when it encounters another physics mark 70, then it calls part 2.
+Where acc=> (50,1) and v=70, 50+70 is added and 1 +1(hard coded) is added.
+Since it is done in single partition, everything will be taken care in step2 and step3 does not
+execute and you get the output.
+Change the partition=2 and try again, You will get the below output.
+
+val marksRDD = sc.parallelize(Seq ("phy", 50), ("chem", 60), ("maths", 65), ("phy", 70),
+("chem", 75), ("maths", 80), 2)
+
+marksRDD.glom.collect
+res6: Array[Array[(String, Int)]] = Array(
+Array(phy,50), (chem,60), (maths, 65)),
+Array((phy, 70), (chem, 75), (maths,80)))
+
+val combined = marksRDD.combineByKey( (mark) => { println(s" Part 1: (${mark},1)");
+                                                 (mark, 1)},
+                             ( acc: (Int, Int), v) => {
+                                        println("""Part 2: (${acc._1} + ${v}, ${acc,_2} + 1)""")
+                            (acc._1 + v, acc._2 + 1)
+                            (acc1: (Int, Int), acc2: (Int, Int)) => {
+                        println("""Part 3: (S{acc1._1} + ${acc2,_1}, ${acc1._2} + ${acc2._2})""")
+                            (acc1._1 + acc2._1, acc1,_2 + acc2._2)
+                                }
+                                )
+combined.collect
+
+Part 1: (50,1)
+Part 1: (70,1)
+Part 1: (60,1)
+Part 1: (75,1)
+Part 1: (65,1)
+Part 1: (80,1)
+Part 3 : (50 + 70, 1 + 1)
+Part 3: (60 + 75,1 + 1)
+Part 3: (65 + 80, 1 + 1)
+res9: Array[(String, (Int, Int)] = Array ((maths, (145,2)), (chem, (135, 2)), (phy, (120,2)))
+
+Since there were 2 partitions and each partition has unique phy chem math, so there was
+nothing to group locally and hence only part3 got called.
+
+## Lets add more input to understand it better.
+
+val marksRDD = sc.parallelize(Seq("phy", 50), ("chem", 60), ("maths", 65), ("phy", 70),
+("chem", 75), ("maths",80), ("phy", 15), ("chem", 20), ("maths", 25), ("phy",30),
+("chem",35), ("maths",40), 2)
+
+marksRDD.glom.collect
+res 10: Array[Array[(String, Int}]] = Array(
+Array(phy, 50), (chem,60), (maths, 65), (phy, 70), (chem,75), (maths,80)),
+Array((phy, 15), (chem,20), (maths,25), (phy,30), (chem, 35), (maths,40))}
+
+val combined = marksRDD.combineByKey(
+                (mark) => { println(s" Part 1: (${mark},1)"); (mark, 1) },
+                ( acc: (Int, Int), v) => 1
+                println(s"'''Part 2: (${acc,_1} + ${v}, ${acc._2} + 1)"''')
+                (acc._1 + v, acc._2 + 1)
+                (accl: (Int, Int), acc2: (Int, Int)) => {
+                println(sPart 3: (S{acc1,_1} + ${acc2,_ 1}, ${acc1,_2} + ${acc2, _23"'™)
+                (acc1._1 + acc2,_1, acc1,_2 + acc2._2)
+}
+combined.collect
+
+Part 1: (50,1)
+Part 1: (60,1)
+Part 1: (15,1)
+Part 1: (65, 1)
+Part 1: (20,1)
+Part 2: (50 + 70, 1 + 1)
+Part 1: (25,1)
+Part 2: (60 + 75, 1 + 1)
+Part 2: (15 + 30, 1 + 1)
+Part 2: (65 + 80, 1 + 1)
+Part 2: (20 + 35, 1 + 1)
+Part 2: (25 + 40, 1 + 1)
+Part 3: (120 + 45, 2 + 2)
+Part 3: (135 + 55, 2 + 2)
+Part 3: (145 + 65, 2 + 2)
+res 11: Array[(String, (Int, Int))] = Array((maths,(210,4)), (chem,(190,4)), (phy (165,4)))
+
+Now, we can see part-1, part2, part getting called. parti and part2 got called 6 times
+because they are in 2 partition. In each partition it will be called only 3 times.
+
+var result=combined.map{ case (key, value) => (key, value._1 / value._2.toFloat) }.collect
+res47: Array[(String, Float)] = Array(maths, 72.5), (phy, 55.0), (chem, 65.0))
+
+
+If the dataset is small enough that it was being added in the same partition then part2 will
+not be executed.
+Can we dissect it more?
+
+val reduced = marksRDD.combineByKey( (mark) =>(mark, 1),
+                                            (acc: (Int, Int), v) => (acc._1 + v, acc. _2 + 1),
+                (acc1: (Int, Int), acc2: (Int, Int)) => (acc1,_1 + acc2,_1, acс1._2 + acc2._2)
+                )
+
+Can otherwise be written as
+
+val createCombiner=(mark:Int) =>(mark, 1)
+//createCombiner: Int => (Int, Int) = <function1>
+
+val mergeValueLocally=(acc: (Int, Int), v: Int) => (acc._1 + v, acc._2 + 1)
+//mergeValue Locally: ((Int, Int), Int) => (Int, Int) = ‹function2>
+
+val combineGlobally=(acc1: (Int, Int), acc2: (Int, Int)) => (acc1._1 + acc2._1, acc1._2 +
+acc2._2)
+
+val combined = marksRDD.combineByKey(createCombiner, mergeValueLocally, combineGlobally)
+
+combined.collect
+res 12: Array[(String, (Int, Int))] = Array((maths,(210,4)), (chem, (190,4)), (phy,(165,4)))
+combined.map{case(sub,(totalMarks,count))=>(sub,totalMarks/count.toFloat)}.collect
+res 13: Array[(String, Float)] = Array(maths,52.5), (chem, 47.5), (phy,41.25))
+
+## compare reduceByKey, aggregateByKey and combineByKey
+
+Let's write the same program to find the average subject wise and let's see which executes
+faster.
+
+val marksRDD = sc.parallelize(Seq(("phy", 50), (" chem", 60), ("maths", 65), ("phy", 70),
+('chem",75), ("maths",80), ("phy", 15), ("chem", 20), ("maths", 25), ("phy",30),
+("chem",35), ("maths",40)), 2)
+
+Using reduceByKey, took 261 ms and 418 Bytes shuffle read and write.
+
+val mapped = marksRDD.mapValues(mark => (mark, 1))
+val reduced = mapped.reduceByKey((x, y) => (x._ 1 + V•_1, x._2 + Y•_2))
+val average = reduced.mapValues { case(totalMarks, frequency) =>totalMarks / frequency
+average.collect
+
+Using combineByKey took 36 ms and 418 B Shuffle read and write.
+
+val marksRDD = sc.parallelize(Seq(("phy", 50), ("chem", 60), ("maths", 65), ("phy", 70),
+("chem",75), ("maths",,80), ("phy", 15), ("chem", 20), ("maths", 25), ("phy", 30),
+("chem",35), ("maths",40)), 2)
+
+val combined = marksRDD.combineByKey(   (mark) =>(mark, 1),
+                (acc: (Int, Int), v) => (acc._1 + v, acc._2 + 1),
+                (acc1: (Int, Int), acc2: (Int, Int)) => (acc1._1 + acc2._1, acc1._2 + acc2._2)
+              )
+val average = combined.map Values { case(totalMarks, frequency) =>totalMarks / frequency }
+
+average.collect
+
+
+Using aggregateByKey took 241 ms and 418 B Shuffle read and write.
+
+val marksRDD = sc.parallelize(Seq(("phy", 50), ("chem", 60), ("maths", 65), ("phy", 70),
+("chem", 75), ("maths", 80), ("phy", 15), ("chem", 20), ("maths", 25), ("phy", 30),
+("chem", 35), ("maths",40)),2)
+
+val aggregated =marksRDD.aggregateByKey((0,0))(
+                                    (k1, v1)=> {(k1._1 + v1, k1._2 + 1)}
+                                    (k2,v2)=> { (k2._1 + v2._1 ,k2._2 + v2._2 ) }
+
+val average = aggregated.map Values { case(totalMarks, frequency) =>totalMarks / frequency }
+
+average.collect
+
+Hence, it proves that aggregateByKey and combinedByKey will perform better reduceByKey
+
+
+
+## Assignment:
+
+Create a rdd of 1 to 10,00,000
+Create a ky pair out of it, even and odd
+Perform some operation using reduceByKey, aggregate ByKey and combineByKey
+
+(Find out average of all the even number and odd number)
+
+
+
+
+
+
+
+
