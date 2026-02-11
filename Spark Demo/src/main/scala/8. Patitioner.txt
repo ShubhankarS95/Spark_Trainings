@@ -1,0 +1,200 @@
+## Partitioner
+we have seen that we define the partition=N, and spark automatically creates that
+many partitions for us and stores the data into it.
+
+How do we choose data into our own partition?
+
+Spark supports 3 type of partitioner :
+1. Hash Partitioner
+2. Range Partitioner
+3. Custom Partitioner (write your own)
+
+HashPartitioner: Uses hashCode() of Java to choose the partition number.
+Default partitioner is none and the data is distributed linearly.
+partitionBy method is available only for pairedRDD.
+
+val numWordsList = List((1," one"), (2,"T wo"), (3, "Three"), (4," Four"),(1,"Onee"))
+val numRDD= sc.parallelize(numWordsList,2)
+numRDD.glom.collect
+res8: Array[Array[(Int, String)]] = Array(Array((1,one), (2,Two)),
+Array((3,Three), (4,Four), (1,One)))
+
+numRDD partitioner
+res13: Option [org.apache.spark.Partitioner] = None
+
+scala> val newRDD=numRDD.repartition(2)
+newRDD: org.apache.spark.rdd.RDD[(Int, String)] = MapPartitionsRDD[5] at repartition at
+<console>:23
+
+scala> newRDD.partitioner
+res2: Option[org.apache.spark.Partitioner] = None
+
+scala> newRDD.glom.collect
+res3: Array[Array[(Int, String)]] = Array(Array((1,one), (4,Four)), Array((2, Two), (3, Three),
+(1,0ne)))
+
+Let's try implementing HashPartitioner, which uses the below formula to calculate the
+partition number. Partition number starts with 0
+
+HashCode(key)%noOfPartition
+
+
+import org.apache.spark.HashPartitioner
+
+val numRDD= sc.parallelize(numWordsList).partitionBy(new HashPartitioner (2))
+numRDD.glom.collect
+res9: Array[Array[(Int, String)]] = Array(Array((2, Two), (4,Four)),
+Array((1, one), (3, Three), (1,0nee)))
+
+numRDD.partitioner
+res10: Option[org.apache.spark.Partitioner] = Some(org.apache.spark.HashPartitioner@2)
+
+numRDD.foreachPartition(it=> println("partition:"); it.foreach(kv=>println(kv))})
+
+partition:
+partition :
+(1,one)
+(3,Three)
+(1,0nee)
+(2,Two)
+(4,Four)
+
+
+## Range Partition:
+Assume you have below employees belonging to 3 different departments. Each department
+has employees.
+
+101, ("suraj1", "BigData1")                                 dept 1
+102, ("Mahesh1", "Java1")
+103, ("Kiran1", "php1")
+201,("suraj2", "BigData2")                                  dept2
+202, ("Mahesh2", "Java2")
+203, ("Kiran2", "php2")
+301, ("suraj3", "BigData3")                                 dept3
+302, ("Mahesh3", "Java3")
+303, ("Kiran3", "php3")
+
+You would like to create a Partitioner based on Range such that 3 partition host the data of
+their own range.
+
+
+import org.apache.spark.RangePartitioner
+val studentList = List((101, ("suraj1", "BigData1" )),(102, ("Mahesh1", "Java1" )), (103,
+("Kiran1", "php1")), (201, ("suraj2", "BigData2" )),(202, ("Mahesh2", "Java2")),(203, ("Kiran2",
+"php2"),  (301, ("suraj3", "BigData3" )),(302, ("Mahesh3", "Java3")),(303, ("Kiran3","php3")))
+
+val studentRDD=sc.parallelize(studentList)
+val rangePartitioner=new RangePartitioner(3,studentRDD)
+val studentRDD2=studentRDD.partitionBy(rangePartitioner)
+
+studentRDD2.glom.collect
+res23: Array[Array[(Int, (String, String))]] =
+Array(Array((101,(suraj 1,BigData1)), (102,(Mahesh1,Java1)), (103,(Kiran1, php1))),
+Array((201, (suraj2, BigData2)), (202, (Mahesh2,Java2)), (203,(Kiran2,php2))),
+Array((301,(suraj3,BigData3)), (302,(Mahesh3,Java3)), (303,(Kiran3, php3))))
+
+Visit the DAG and observe the output. Data will be shuffled.
+
+## Range Partitioner with less partition number and more Range.
+
+scala> val rangePartitioner=new RangePartitioner(2, studentRDD)
+rangePartitioner: org.apache.spark.RangePartitioner[Int, (String, String)] =
+org.apache.spark.RangePartitioner@2106
+
+scala> val studentRDD2=studentRDD.partitionBy(rangePartitioner)
+studentRDD2: org.apache.spark.rdd.RDD[(Int, (String, String)] = ShuffledRDD[28] at
+partitionBy at <console>:29
+
+scala > studentRDD2.glom.collect
+res 17: Array[Array[(Int, (String, String))]] = Array (
+Array((101,(suraj1, BigData1)), (102,(Mahesh1,Java 1)), (103,(Kiran1,php1)),
+(201, (suraj2,BigData2)), (202,(Mahesh2,Java2))),
+Array((203,(Kiran2,php2)), (301, (suraj3,BigData3)), (302,(Mahesh3,Java3)),
+(303, (Kiran3,php3)))
+)
+
+
+
+## User Defined Partition:
+In case you have your own requirement than you can define your own partition.
+
+1. Consider the below file(student.txt) where we have student's marks data.
+In this example the possible value of place is Bombay, Madras, Delhi
+/home/hduser/student.txt
+
+arun, 854, Kaitan Public School, Bombay,arun@gmail.com
+beeful, 982,DAV Public School, Madras,beeful@gmail.com
+kaarim,722, HolyAngels School, Delhi, kaarim@gmail.com
+murti, 622, Ingraham Public School, Delhi,murti@gmail.com
+avni,859, Kaitan Public School, Delhi,avni@gmail.com
+amrita,956, Deendayal Public School, Delhi, amrita@gmail.com
+suresh,876, Kaitan Public School, Bombay,suresh@gmail.com
+malti,999, DAV Public School, Madras,malti@gmail.com
+sumit, 899, Kaitan Public School, Bombay, sumit@gmail.com
+vineet,942, DAV Public School, Madras,vineet@gmail.com
+
+
+2. Let's write a program to read these data and load them in different partition.
+
+val studentData=sc.textFile(" file:/home/hduser/student.txt")
+studentData.glom.collect
+res24: Array[String] = Array(
+arun, 854, Kaitan Public School,Bombay,arun@gmail.com,
+beeful,982,DAV Public School,Madras,beeful@gmail.com ,...
+)
+
+
+3. Create your PairedRDD
+
+val studentRDD= studentData.map(st=>{
+                                    val arr=st.split(,");
+                                    (arr(3), st)
+})
+studentRDD.collect
+res26: Array[(String, String)] = Array((Bombay,arun,854,Kaitan Public
+School,Bombay,arun@gmail.com), (Madras,beeful,982,DAV Public
+School,Madras,beeful@gmail.com), (Delhi,kaarim,722,HolyAngels School,Delhi,kaarim@gmail.com)...
+
+
+4. Create Your custom Partitioner class.
+
+Implement getPartition
+
+import org.apache.spark.Partitioner
+class CustomPartitioner(override val numPartitions:Int) extends Partitioner{
+    val placeMap= Map("bombay"->0, "madras"->1," delhi" ->2)
+
+    override def getPartition(key: Any): Int={
+        val place=key.asInstanceOf[String]
+        val index=placeMap(place.toLowerCase)                //Bombay,bombay,bOMbay
+        val partNo=index%numPartitions                       //This is not really needed
+        println(s"$place :: $partNo")
+    partNo
+    //Simply return index
+    //index
+    }
+}
+equals will be used to test our partitioner object against other instance of same
+object to decide whether both of them should fall in same partition or not.
+
+5.call partitionBy() by passing your Custom Partitioner and total partition number
+
+val partitionData = studentRDD.partitionBy(new CustomPartitioner(3))
+partitionData.glom.collect
+res11: Array[Array[(String, String)]] = Array(
+Array((Bombay, arun, 854, Kaitan Public School,Bombay, arun@gmail.com),
+(Bombay, suresh, 876, Kaitan Public School, Bombay,suresh@gmail.com),
+(Bombay, sumit, 899,Kaitan Public School, Bombay, sumit@gmail.com)),
+...
+
+Partition Will shuffle the data, If needed.
+
+
+
+
+
+
+
+
+
+

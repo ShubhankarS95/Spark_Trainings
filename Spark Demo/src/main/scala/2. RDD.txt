@@ -172,7 +172,7 @@ Eg 834 MB of Data was split into 25 Partitions as 834/32 = 25 Partitions
 
 cmd> spark-shell    //launches spark-shell with all possible cores-4 here
 cmd> spark-shell -master local[ *]  //use either of this 2, launches with max possible cores
-scala> val input=sc.textFile(" file:/home/hduser/word1.txt")
+scala> val input=sc.textFile("file:/home/hduser/word1.txt")
 scala> input.partitions.size
 resO: Int = 2
 

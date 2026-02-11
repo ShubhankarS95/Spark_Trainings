@@ -1,0 +1,39 @@
+# Assignment 1:
+
+Assume we have the below transaction data, which contains employeeId, Item Name, Price
+transaction.txt
+    1001, TV,5000
+    1002, Mobile, 6000
+    1002, Watch,4000
+    1001, Bat,6000
+    1001, Camera,8000
+
+Requirement
+1. Find out employee wise total expense
+    (1001,19000.0)
+    (1002,10000.0)
+2. Find out employee wise highest expense on any item
+    (e.g., 1001,8000) (1002,6000)
+
+
+
+
+# Assignment 2 :
+
+Consider the transaction. txt present along with this folder. We need to process the data and
+get the below result.
+Assuming the file is loaded properly in the RDD. You should write the Program in IntelliJ and
+not on terminal.
+val transactionRDD = sc. textFile("path) \to\\transaction.txt")
+//Loads the file into RDD
+Answers are Hidden and not for Learners
+1. Map the records to a case class.
+case class Transaction(id:String, amount:Float)
+Filter out only the good transaction records from the list. The account number should
+start with s and the transaction amount should be greater than zero.
+3. Find all the high value transaction records(from good transaction records) with a
+transaction amount greater than 1000.
+4. Find all the bad transaction records. Anything other than good transaction is bad
+transaction
+
+
